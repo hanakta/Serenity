@@ -1,0 +1,39 @@
+{
+  "name": "serenity-todo-manager",
+  "version": "1.0.0",
+  "description": "🐱 Serenity - Современный менеджер задач для повышения продуктивности",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && php -S localhost:8000 -t public",
+    "build": "npm run build:shared && npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:shared": "cd shared && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../shared && npm install",
+    "clean": "rm -rf node_modules frontend/node_modules shared/node_modules",
+    "db:migrate": "cd backend && php database/migrate.php",
+    "db:seed": "cd backend && php database/seed.php",
+    "composer:install": "cd backend && composer install",
+    "composer:update": "cd backend && composer update"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "todo",
+    "task-manager",
+    "productivity",
+    "nextjs",
+    "typescript"
+  ],
+  "author": "Serenity Team",
+  "license": "MIT"
+}

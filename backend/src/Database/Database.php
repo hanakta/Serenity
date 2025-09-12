@@ -43,8 +43,8 @@ class Database
             $dsn = "mysql:host={$config['host']};port={$config['port']};dbname={$config['database']};charset={$config['charset']}";
             
             // Добавляем unix_socket для MAMP если нужно
-            if (isset($config['unix_socket'])) {
-                $dsn .= ";unix_socket={$config['unix_socket']}";
+            if (isset($config['socket'])) {
+                $dsn .= ";unix_socket={$config['socket']}";
             }
         }
 

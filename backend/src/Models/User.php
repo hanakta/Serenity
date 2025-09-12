@@ -204,7 +204,7 @@ class User
      */
     public function updateSettings(string $id, array $settings): ?array
     {
-        $sql = "UPDATE users SET settings = :settings, updated_at = datetime('now') WHERE id = :id";
+        $sql = "UPDATE users SET settings = :settings, updated_at = NOW() WHERE id = :id";
         
         $params = [
             'id' => $id,

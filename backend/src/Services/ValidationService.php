@@ -197,6 +197,59 @@ class ValidationService
     }
 
     /**
+     * Валидация создания команды
+     */
+    public function validateTeamCreation(array $data): array
+    {
+        $errors = [];
+
+        // Валидация названия команды
+        if (empty($data['name'])) {
+            $errors['name'] = 'Название команды обязательно';
+        } elseif (strlen($data['name']) < 2) {
+            $errors['name'] = 'Название команды должно содержать минимум 2 символа';
+        } elseif (strlen($data['name']) > 255) {
+            $errors['name'] = 'Название команды не должно превышать 255 символов';
+        }
+
+        // Валидация описания
+        if (isset($data['description']) && strlen($data['description']) > 1000) {
+            $errors['description'] = 'Описание не должно превышать 1000 символов';
+        }
+
+        // Валидация цвета
+        if (isset($data['color']) && !preg_match('/^#[0-9A-Fa-f]{6}$/', $data['color'])) {
+            $errors['color'] = 'Некорректный формат цвета (должен быть #RRGGBB)';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Валидация пагинации
+     */
+    public function validatePagination(array $data): array
+    {
+        $errors = [];
+
+        if (isset($data['page'])) {
+            $page = (int) $data['page'];
+            if ($page < 1) {
+                $errors['page'] = 'Номер страницы должен быть больше 0';
+            }
+        }
+
+        if (isset($data['limit'])) {
+            $limit = (int) $data['limit'];
+            if ($limit < 1 || $limit > 100) {
+                $errors['limit'] = 'Лимит должен быть от 1 до 100';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
      * Валидация UUID
      */
     public function validateUUID(string $uuid): bool
@@ -282,29 +335,6 @@ class ValidationService
         return $errors;
     }
 
-    /**
-     * Валидация пагинации
-     */
-    public function validatePagination(array $data): array
-    {
-        $errors = [];
-
-        if (isset($data['page'])) {
-            $page = (int) $data['page'];
-            if ($page < 1) {
-                $errors['page'] = 'Страница должна быть больше 0';
-            }
-        }
-
-        if (isset($data['limit'])) {
-            $limit = (int) $data['limit'];
-            if ($limit < 1 || $limit > 100) {
-                $errors['limit'] = 'Лимит должен быть от 1 до 100';
-            }
-        }
-
-        return $errors;
-    }
 
     /**
      * Валидация обновления профиля
@@ -434,5 +464,52 @@ class ValidationService
     public function sanitizeStringArray(array $strings): array
     {
         return array_map([$this, 'sanitizeString'], $strings);
+    }
+
+
+    /**
+     * Валидация приглашения в команду
+     */
+    public function validateTeamInvitation(array $data): array
+    {
+        $errors = [];
+
+        // Валидация email
+        if (empty($data['email'])) {
+            $errors['email'] = 'Email обязателен';
+        } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'Некорректный формат email';
+        }
+
+        // Валидация роли
+        if (!empty($data['role']) && !in_array($data['role'], ['admin', 'member', 'viewer'])) {
+            $errors['role'] = 'Некорректная роль. Доступные роли: admin, member, viewer';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Валидация комментария к задаче
+     */
+    public function validateTaskComment(array $data): array
+    {
+        $errors = [];
+
+        // Валидация содержимого комментария
+        if (empty($data['content'])) {
+            $errors['content'] = 'Содержимое комментария обязательно';
+        } elseif (strlen($data['content']) < 1) {
+            $errors['content'] = 'Комментарий не может быть пустым';
+        } elseif (strlen($data['content']) > 1000) {
+            $errors['content'] = 'Комментарий не должен превышать 1000 символов';
+        }
+
+        // Валидация ID задачи
+        if (empty($data['task_id'])) {
+            $errors['task_id'] = 'ID задачи обязателен';
+        }
+
+        return $errors;
     }
 }

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест регистрации</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #ffe6e6;
+            border-radius: 4px;
+        }
+        .success {
+            color: green;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e6ffe6;
+            border-radius: 4px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Тест регистрации</h1>
+    
+    <form id="registrationForm">
+        <div class="form-group">
+            <label for="name">Имя:</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Пароль:</label>
+            <input type="password" id="password" name="password" required minlength="8">
+        </div>
+        
+        <div class="form-group">
+            <label for="confirmPassword">Подтверждение пароля:</label>
+            <input type="password" id="confirmPassword" name="confirmPassword" required>
+        </div>
+        
+        <button type="submit">Зарегистрироваться</button>
+    </form>
+    
+    <div id="message"></div>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('registrationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const messageDiv = document.getElementById('message');
+            const resultDiv = document.getElementById('result');
+            
+            // Очищаем предыдущие сообщения
+            messageDiv.innerHTML = '';
+            resultDiv.innerHTML = '';
+            
+            const formData = new FormData(this);
+            const data = {
+                name: formData.get('name'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                confirmPassword: formData.get('confirmPassword')
+            };
+            
+            console.log('Отправляемые данные:', data);
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                console.log('Ответ сервера:', result);
+                
+                if (response.ok) {
+                    messageDiv.innerHTML = '<div class="success">✅ Регистрация успешна!</div>';
+                    resultDiv.innerHTML = '<h3>Результат:</h3><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                } else {
+                    messageDiv.innerHTML = '<div class="error">❌ Ошибка регистрации</div>';
+                    
+                    let errorMessage = result.message || 'Неизвестная ошибка';
+                    if (result.errors) {
+                        errorMessage += '<br><br>Ошибки валидации:<br>';
+                        for (const [field, error] of Object.entries(result.errors)) {
+                            errorMessage += `• ${field}: ${error}<br>`;
+                        }
+                    }
+                    
+                    resultDiv.innerHTML = '<h3>Ошибка:</h3><div class="error">' + errorMessage + '</div><br><h3>Полный ответ:</h3><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                messageDiv.innerHTML = '<div class="error">❌ Ошибка сети: ' + error.message + '</div>';
+            }
+        });
+    </script>
+</body>
+</html>
+
+

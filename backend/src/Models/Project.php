@@ -165,7 +165,7 @@ class Project
                     SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
                     SUM(CASE WHEN t.status = 'todo' THEN 1 ELSE 0 END) as todo_tasks,
                     SUM(CASE WHEN t.priority = 'urgent' THEN 1 ELSE 0 END) as urgent_tasks,
-                    SUM(CASE WHEN t.due_date < datetime('now') AND t.status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
+                    SUM(CASE WHEN t.due_date < NOW() AND t.status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
                 FROM tasks t
                 WHERE t.project_id = :project_id AND t.user_id = :user_id";
 

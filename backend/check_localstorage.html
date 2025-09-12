@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Проверка localStorage</title>
+</head>
+<body>
+    <h1>Данные команд в localStorage</h1>
+    <div id="teams-data"></div>
+    
+    <script>
+        const teamsData = localStorage.getItem("serenity_teams");
+        const token = localStorage.getItem("token");
+        
+        document.getElementById("teams-data").innerHTML = `
+            <h2>Токен:</h2>
+            <p>${token ? "Есть токен: " + token.substring(0, 50) + "..." : "Нет токена"}</p>
+            
+            <h2>Данные команд:</h2>
+            <pre>${teamsData ? JSON.stringify(JSON.parse(teamsData), null, 2) : "Нет данных команд"}</pre>
+        `;
+    </script>
+</body>
+</html>
+
+

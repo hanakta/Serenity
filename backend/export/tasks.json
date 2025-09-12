@@ -1,0 +1,72 @@
+[
+    {
+        "id": "demo-task-0000-0000-0000-000000000001",
+        "title": "Изучить новый фреймворк",
+        "description": "Потратить 2 часа на изучение документации",
+        "status": "todo",
+        "priority": "high",
+        "category": "learning",
+        "due_date": null,
+        "completed_at": null,
+        "user_id": "demo-user-0000-0000-0000-000000000001",
+        "project_id": "demo-project-0000-0000-0000-000000000002",
+        "created_at": "2025-09-09 17:45:38",
+        "updated_at": "2025-09-09 17:45:38"
+    },
+    {
+        "id": "demo-task-0000-0000-0000-000000000002",
+        "title": "Купить продукты",
+        "description": "Молоко, хлеб, яйца",
+        "status": "todo",
+        "priority": "medium",
+        "category": "personal",
+        "due_date": null,
+        "completed_at": null,
+        "user_id": "demo-user-0000-0000-0000-000000000001",
+        "project_id": "demo-project-0000-0000-0000-000000000001",
+        "created_at": "2025-09-09 17:45:38",
+        "updated_at": "2025-09-09 17:45:38"
+    },
+    {
+        "id": "demo-task-0000-0000-0000-000000000003",
+        "title": "Записаться к врачу",
+        "description": "Проверить здоровье",
+        "status": "completed",
+        "priority": "high",
+        "category": "health",
+        "due_date": null,
+        "completed_at": null,
+        "user_id": "demo-user-0000-0000-0000-000000000001",
+        "project_id": "demo-project-0000-0000-0000-000000000001",
+        "created_at": "2025-09-09 17:45:38",
+        "updated_at": "2025-09-09 17:45:38"
+    },
+    {
+        "id": "task_68c0681f2f9537.30848980",
+        "title": "Изучить PHP",
+        "description": "Потратить 2 часа на изучение",
+        "status": "todo",
+        "priority": "high",
+        "category": "learning",
+        "due_date": "2025-12-31 18:00:00",
+        "completed_at": null,
+        "user_id": "user_68c067ea4528e0.04565108",
+        "project_id": null,
+        "created_at": "2025-09-09 17:47:11",
+        "updated_at": "2025-09-09 17:47:11"
+    },
+    {
+        "id": "task_68c2b9ec9010d9.29189262",
+        "title": "as",
+        "description": "as",
+        "status": "completed",
+        "priority": "medium",
+        "category": "personal",
+        "due_date": "2025-09-12T11:11",
+        "completed_at": "2025-09-11 13:57:20",
+        "user_id": "demo-user-0000-0000-0000-000000000001",
+        "project_id": null,
+        "created_at": "2025-09-11 12:00:44",
+        "updated_at": "2025-09-11 13:57:20"
+    }
+]

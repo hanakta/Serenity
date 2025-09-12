@@ -22,6 +22,13 @@ class Task
         $sql = "INSERT INTO tasks (id, title, description, status, priority, category, due_date, user_id, project_id) 
                 VALUES (:id, :title, :description, :status, :priority, :category, :due_date, :user_id, :project_id)";
         
+        // Обработка даты для MySQL
+        $dueDate = null;
+        if (!empty($data['due_date'])) {
+            // Конвертируем ISO дату в MySQL формат
+            $dueDate = date('Y-m-d H:i:s', strtotime($data['due_date']));
+        }
+        
         $params = [
             'id' => uniqid('task_', true),
             'title' => $data['title'],
@@ -29,7 +36,7 @@ class Task
             'status' => $data['status'] ?? 'todo',
             'priority' => $data['priority'] ?? 'medium',
             'category' => $data['category'] ?? 'personal',
-            'due_date' => $data['due_date'] ?? null,
+            'due_date' => $dueDate,
             'user_id' => $data['user_id'],
             'project_id' => $data['project_id'] ?? null
         ];
@@ -158,7 +165,12 @@ class Task
         foreach ($allowedFields as $field) {
             if (isset($data[$field])) {
                 $fields[] = "{$field} = :{$field}";
-                $params[$field] = $data[$field];
+                // Обработка даты для MySQL
+                if ($field === 'due_date' && !empty($data[$field])) {
+                    $params[$field] = date('Y-m-d H:i:s', strtotime($data[$field]));
+                } else {
+                    $params[$field] = $data[$field];
+                }
             }
         }
 
@@ -168,12 +180,12 @@ class Task
 
         // Если статус меняется на completed, устанавливаем completed_at
         if (isset($data['status']) && $data['status'] === 'completed') {
-            $fields[] = 'completed_at = datetime(\'now\')';
+            $fields[] = 'completed_at = NOW()';
         } elseif (isset($data['status']) && $data['status'] !== 'completed') {
             $fields[] = 'completed_at = NULL';
         }
 
-        $fields[] = 'updated_at = datetime(\'now\')';
+        $fields[] = 'updated_at = NOW()';
         $sql = "UPDATE tasks SET " . implode(', ', $fields) . " WHERE id = :id";
 
         $this->db->execute($sql, $params);
@@ -251,7 +263,7 @@ class Task
                     SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as todo_tasks,
                     SUM(CASE WHEN priority = 'urgent' THEN 1 ELSE 0 END) as urgent_tasks,
                     SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high_priority_tasks,
-                    SUM(CASE WHEN due_date < datetime('now') AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
+                    SUM(CASE WHEN due_date < NOW() AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
                 FROM tasks 
                 WHERE user_id = :user_id";
 
@@ -287,7 +299,7 @@ class Task
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
                 WHERE t.user_id = :user_id 
-                AND t.due_date < datetime('now') 
+                AND t.due_date < NOW() 
                 AND t.status != 'completed'
                 ORDER BY t.due_date ASC";
 
@@ -309,7 +321,7 @@ class Task
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
                 WHERE t.user_id = :user_id 
-                AND date(t.due_date) = date('now')
+                AND DATE(t.due_date) = CURDATE()
                 ORDER BY t.priority DESC, t.created_at ASC";
 
         $tasks = $this->db->query($sql, ['user_id' => $userId]);

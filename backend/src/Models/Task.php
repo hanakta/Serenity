@@ -19,8 +19,8 @@ class Task
      */
     public function create(array $data): array
     {
-        $sql = "INSERT INTO tasks (id, title, description, status, priority, category, due_date, user_id, project_id) 
-                VALUES (:id, :title, :description, :status, :priority, :category, :due_date, :user_id, :project_id)";
+        $sql = "INSERT INTO tasks (id, title, description, status, priority, category, due_date, user_id, project_id, team_id) 
+                VALUES (:id, :title, :description, :status, :priority, :category, :due_date, :user_id, :project_id, :team_id)";
         
         // Обработка даты для MySQL
         $dueDate = null;
@@ -38,7 +38,8 @@ class Task
             'category' => $data['category'] ?? 'personal',
             'due_date' => $dueDate,
             'user_id' => $data['user_id'],
-            'project_id' => $data['project_id'] ?? null
+            'project_id' => $data['project_id'] ?? null,
+            'team_id' => $data['team_id'] ?? null
         ];
 
         $this->db->execute($sql, $params);
@@ -57,9 +58,11 @@ class Task
      */
     public function findById(string $id): ?array
     {
-        $sql = "SELECT t.*, p.name as project_name, p.color as project_color
+        $sql = "SELECT t.*, p.name as project_name, p.color as project_color, 
+                       tm.name as team_name, tm.color as team_color
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
+                LEFT JOIN teams tm ON t.team_id = tm.id
                 WHERE t.id = :id";
         
         $task = $this->db->queryOne($sql, ['id' => $id]);
@@ -178,14 +181,18 @@ class Task
             return $this->findById($id);
         }
 
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
         // Если статус меняется на completed, устанавливаем completed_at
         if (isset($data['status']) && $data['status'] === 'completed') {
-            $fields[] = 'completed_at = NOW()';
+            $fields[] = "completed_at = {$nowFunction}";
         } elseif (isset($data['status']) && $data['status'] !== 'completed') {
             $fields[] = 'completed_at = NULL';
         }
 
-        $fields[] = 'updated_at = NOW()';
+        $fields[] = "updated_at = {$nowFunction}";
         $sql = "UPDATE tasks SET " . implode(', ', $fields) . " WHERE id = :id";
 
         $this->db->execute($sql, $params);
@@ -256,6 +263,10 @@ class Task
      */
     public function getStats(string $userId): array
     {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
         $sql = "SELECT 
                     COUNT(*) as total_tasks,
                     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
@@ -263,7 +274,7 @@ class Task
                     SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as todo_tasks,
                     SUM(CASE WHEN priority = 'urgent' THEN 1 ELSE 0 END) as urgent_tasks,
                     SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high_priority_tasks,
-                    SUM(CASE WHEN due_date < NOW() AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
+                    SUM(CASE WHEN due_date < {$nowFunction} AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
                 FROM tasks 
                 WHERE user_id = :user_id";
 
@@ -295,11 +306,15 @@ class Task
      */
     public function getOverdueTasks(string $userId): array
     {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
         $sql = "SELECT t.*, p.name as project_name, p.color as project_color
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
                 WHERE t.user_id = :user_id 
-                AND t.due_date < NOW() 
+                AND t.due_date < {$nowFunction} 
                 AND t.status != 'completed'
                 ORDER BY t.due_date ASC";
 
@@ -317,11 +332,15 @@ class Task
      */
     public function getTodayTasks(string $userId): array
     {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $curdateFunction = $dbType === 'sqlite' ? "date('now')" : "CURDATE()";
+        
         $sql = "SELECT t.*, p.name as project_name, p.color as project_color
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
                 WHERE t.user_id = :user_id 
-                AND DATE(t.due_date) = CURDATE()
+                AND DATE(t.due_date) = {$curdateFunction}
                 ORDER BY t.priority DESC, t.created_at ASC";
 
         $tasks = $this->db->query($sql, ['user_id' => $userId]);
@@ -331,5 +350,84 @@ class Task
         }
 
         return $tasks;
+    }
+
+    /**
+     * Получить задачи команды
+     */
+    public function getByTeamId(string $teamId, array $filters = [], int $page = 1, int $limit = 20): array
+    {
+        $offset = ($page - 1) * $limit;
+        
+        $sql = "SELECT t.*, p.name as project_name, p.color as project_color, 
+                       tm.name as team_name, tm.color as team_color,
+                       u.name as user_name, u.email as user_email
+                FROM tasks t
+                LEFT JOIN projects p ON t.project_id = p.id
+                LEFT JOIN teams tm ON t.team_id = tm.id
+                LEFT JOIN users u ON t.user_id = u.id
+                WHERE t.team_id = :team_id";
+        
+        $params = ['team_id' => $teamId];
+        
+        // Применяем фильтры
+        if (!empty($filters['status'])) {
+            $sql .= " AND t.status = :status";
+            $params['status'] = $filters['status'];
+        }
+        
+        if (!empty($filters['priority'])) {
+            $sql .= " AND t.priority = :priority";
+            $params['priority'] = $filters['priority'];
+        }
+        
+        if (!empty($filters['search'])) {
+            $sql .= " AND (t.title LIKE :search OR t.description LIKE :search)";
+            $params['search'] = '%' . $filters['search'] . '%';
+        }
+        
+        // Сортировка
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortOrder = $filters['sort_order'] ?? 'DESC';
+        $sql .= " ORDER BY t.{$sortBy} {$sortOrder}";
+        
+        // Пагинация
+        $sql .= " LIMIT :limit OFFSET :offset";
+        $params['limit'] = $limit;
+        $params['offset'] = $offset;
+        
+        $tasks = $this->db->query($sql, $params);
+        
+        foreach ($tasks as &$task) {
+            $task['tags'] = $this->getTags($task['id']);
+        }
+        
+        return $tasks;
+    }
+
+    /**
+     * Получить статистику задач команды
+     */
+    public function getTeamStats(string $teamId): array
+    {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
+        $sql = "SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as todo,
+                    SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+                    SUM(CASE WHEN priority = 'urgent' THEN 1 ELSE 0 END) as urgent,
+                    SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high,
+                    SUM(CASE WHEN priority = 'medium' THEN 1 ELSE 0 END) as medium,
+                    SUM(CASE WHEN priority = 'low' THEN 1 ELSE 0 END) as low,
+                    SUM(CASE WHEN due_date < {$nowFunction} AND status != 'completed' THEN 1 ELSE 0 END) as overdue
+                FROM tasks 
+                WHERE team_id = :team_id";
+        
+        return $this->db->queryOne($sql, ['team_id' => $teamId]);
     }
 }

@@ -51,6 +51,14 @@ class AuthController
             // Создание пользователя
             $user = $this->userModel->create($data);
             
+            // Если у пользователя есть аватарка в базе данных, устанавливаем URL для получения
+            if ($user['avatar_data']) {
+                $user['avatar'] = 'http://localhost:8000/api/profile/avatar';
+            }
+
+            // Убираем большие поля из ответа для экономии трафика
+            unset($user['avatar_data']);
+            
             // Генерация JWT токена
             $token = $this->jwtService->generateToken($user['id']);
 
@@ -98,6 +106,14 @@ class AuthController
                     'message' => 'Неверный email или пароль'
                 ], 401);
             }
+
+            // Если у пользователя есть аватарка в базе данных, устанавливаем URL для получения
+            if ($user['avatar_data']) {
+                $user['avatar'] = 'http://localhost:8000/api/profile/avatar';
+            }
+
+            // Убираем большие поля из ответа для экономии трафика
+            unset($user['avatar_data']);
 
             // Генерация JWT токена
             $token = $this->jwtService->generateToken($user['id']);
@@ -176,6 +192,14 @@ class AuthController
                     'message' => 'Пользователь не найден'
                 ], 404);
             }
+
+            // Если у пользователя есть аватарка в базе данных, устанавливаем URL для получения
+            if ($user['avatar_data']) {
+                $user['avatar'] = 'http://localhost:8000/api/profile/avatar';
+            }
+
+            // Убираем большие поля из ответа для экономии трафика
+            unset($user['avatar_data']);
 
             return $this->jsonResponse($response, [
                 'success' => true,

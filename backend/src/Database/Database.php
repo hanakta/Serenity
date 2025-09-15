@@ -166,5 +166,41 @@ class Database
             'connected' => $this->isConnected()
         ];
     }
+
+    /**
+     * Получить тип базы данных
+     */
+    public function getDatabaseType(): string
+    {
+        return $this->connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+    }
+
+    /**
+     * Получить функцию текущего времени для SQL
+     */
+    public function getNowFunction(): string
+    {
+        return $this->getDatabaseType() === 'mysql' ? 'NOW()' : 'datetime(\'now\')';
+    }
+
+    /**
+     * Получить функцию текущей даты для SQL
+     */
+    public function getCurrentDateFunction(): string
+    {
+        return $this->getDatabaseType() === 'mysql' ? 'CURDATE()' : 'date(\'now\')';
+    }
+
+    /**
+     * Получить функцию вычитания дней для SQL
+     */
+    public function getDateSubtractFunction(int $days): string
+    {
+        if ($this->getDatabaseType() === 'mysql') {
+            return "DATE_SUB(NOW(), INTERVAL {$days} DAY)";
+        } else {
+            return "datetime('now', '-{$days} days')";
+        }
+    }
 }
 

@@ -40,7 +40,17 @@ class JWTService
         // Добавляем дополнительные claims
         $payload = array_merge($payload, $additionalClaims);
 
-        return JWT::encode($payload, $this->secret, $this->algorithm);
+        // Используем ручное кодирование для избежания проблем с Firebase JWT
+        $header = json_encode(['typ' => 'JWT', 'alg' => $this->algorithm]);
+        $payloadJson = json_encode($payload);
+        
+        $headerEncoded = $this->base64UrlEncode($header);
+        $payloadEncoded = $this->base64UrlEncode($payloadJson);
+        
+        $signature = hash_hmac('sha256', $headerEncoded . '.' . $payloadEncoded, $this->secret, true);
+        $signatureEncoded = $this->base64UrlEncode($signature);
+        
+        return $headerEncoded . '.' . $payloadEncoded . '.' . $signatureEncoded;
     }
 
     /**
@@ -59,7 +69,17 @@ class JWTService
             'type' => 'refresh'
         ];
 
-        return JWT::encode($payload, $this->secret, $this->algorithm);
+        // Используем ручное кодирование для избежания проблем с Firebase JWT
+        $header = json_encode(['typ' => 'JWT', 'alg' => $this->algorithm]);
+        $payloadJson = json_encode($payload);
+        
+        $headerEncoded = $this->base64UrlEncode($header);
+        $payloadEncoded = $this->base64UrlEncode($payloadJson);
+        
+        $signature = hash_hmac('sha256', $headerEncoded . '.' . $payloadEncoded, $this->secret, true);
+        $signatureEncoded = $this->base64UrlEncode($signature);
+        
+        return $headerEncoded . '.' . $payloadEncoded . '.' . $signatureEncoded;
     }
 
     /**
@@ -68,58 +88,44 @@ class JWTService
     public function validateToken(string $token): array
     {
         try {
-            // Сначала пробуем стандартный способ
-            $decoded = JWT::decode($token, new Key($this->secret, $this->algorithm));
+            // Используем ручное декодирование для избежания проблем с Firebase JWT
+            $parts = explode('.', $token);
+            if (count($parts) !== 3) {
+                throw new \Exception('Неверный формат токена');
+            }
             
-            // Преобразуем объект в массив
-            if (is_object($decoded)) {
-                $payload = json_decode(json_encode($decoded), true);
-            } else {
-                $payload = (array) $decoded;
+            // Декодируем header и payload
+            $header = json_decode($this->base64UrlDecode($parts[0]), true);
+            $payload = json_decode($this->base64UrlDecode($parts[1]), true);
+            
+            if (!$header || !$payload) {
+                throw new \Exception('Не удалось декодировать токен');
+            }
+            
+            // Проверяем алгоритм
+            if ($header['alg'] !== $this->algorithm) {
+                throw new \Exception('Неверный алгоритм');
+            }
+            
+            // Проверяем подпись
+            $signature = $this->base64UrlDecode($parts[2]);
+            $expectedSignature = hash_hmac('sha256', $parts[0] . '.' . $parts[1], $this->secret, true);
+            
+            if (!hash_equals($signature, $expectedSignature)) {
+                throw new \Exception('Неверная подпись токена');
+            }
+            
+            // Проверяем время истечения
+            if (isset($payload['exp']) && $payload['exp'] < time()) {
+                throw new \Exception('Токен истек');
             }
             
             return $payload;
-        } catch (ExpiredException $e) {
-            throw new \Exception('Токен истек');
-        } catch (SignatureInvalidException $e) {
-            throw new \Exception('Недействительная подпись токена');
         } catch (\Exception $e) {
-            // Если стандартный способ не работает, пробуем ручное декодирование
-            try {
-                $parts = explode('.', $token);
-                if (count($parts) !== 3) {
-                    throw new \Exception('Неверный формат токена');
-                }
-                
-                $header = json_decode(base64_decode($parts[0]), true);
-                $payload = json_decode(base64_decode($parts[1]), true);
-                
-                if (!$header || !$payload) {
-                    throw new \Exception('Не удалось декодировать токен');
-                }
-                
-                // Проверяем алгоритм
-                if ($header['alg'] !== $this->algorithm) {
-                    throw new \Exception('Неверный алгоритм');
-                }
-                
-                // Проверяем подпись (упрощенная проверка)
-                $signature = base64_decode($parts[2]);
-                $expectedSignature = hash_hmac('sha256', $parts[0] . '.' . $parts[1], $this->secret, true);
-                
-                if (!hash_equals($signature, $expectedSignature)) {
-                    throw new \Exception('Неверная подпись токена');
-                }
-                
-                // Проверяем время истечения
-                if (isset($payload['exp']) && $payload['exp'] < time()) {
-                    throw new \Exception('Токен истек');
-                }
-                
-                return $payload;
-            } catch (\Exception $e2) {
-                throw new \Exception('Недействительный токен: ' . $e2->getMessage());
-            }
+            // Логируем ошибку для отладки
+            error_log('JWT Validation Error: ' . $e->getMessage());
+            error_log('Token: ' . $token);
+            throw new \Exception('Недействительный токен: ' . $e->getMessage());
         }
     }
 
@@ -208,5 +214,21 @@ class JWTService
 
         $userId = $payload['user_id'];
         return $this->generateTokenPair($userId);
+    }
+
+    /**
+     * Base64 URL encode
+     */
+    private function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * Base64 URL decode
+     */
+    private function base64UrlDecode(string $data): string
+    {
+        return base64_decode(str_pad(strtr($data, '-_', '+/'), strlen($data) % 4, '=', STR_PAD_RIGHT));
     }
 }

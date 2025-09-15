@@ -20,8 +20,8 @@ class User
      */
     public function create(array $data): array
     {
-        $sql = "INSERT INTO users (id, email, name, password_hash, avatar, settings) 
-                VALUES (:id, :email, :name, :password_hash, :avatar, :settings)";
+        $sql = "INSERT INTO users (id, email, name, password_hash, avatar, avatar_data, avatar_mime_type, avatar_size, settings) 
+                VALUES (:id, :email, :name, :password_hash, :avatar, :avatar_data, :avatar_mime_type, :avatar_size, :settings)";
         
         $params = [
             'id' => uniqid('user_', true),
@@ -29,6 +29,9 @@ class User
             'name' => $data['name'],
             'password_hash' => password_hash($data['password'], PASSWORD_DEFAULT),
             'avatar' => $data['avatar'] ?? null,
+            'avatar_data' => $data['avatar_data'] ?? null,
+            'avatar_mime_type' => $data['avatar_mime_type'] ?? null,
+            'avatar_size' => $data['avatar_size'] ?? null,
             'settings' => json_encode($data['settings'] ?? [])
         ];
 
@@ -43,7 +46,7 @@ class User
      */
     public function findById(string $id): ?array
     {
-        $sql = "SELECT id, email, name, avatar, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE id = :id";
         
         return $this->db->queryOne($sql, ['id' => $id]);
@@ -54,7 +57,7 @@ class User
      */
     public function findByEmail(string $email): ?array
     {
-        $sql = "SELECT id, email, name, avatar, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE email = :email";
         
         return $this->db->queryOne($sql, ['email' => $email]);
@@ -65,7 +68,7 @@ class User
      */
     public function findByEmailWithPassword(string $email): ?array
     {
-        $sql = "SELECT id, email, name, password_hash, avatar, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, password_hash, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE email = :email";
         
         return $this->db->queryOne($sql, ['email' => $email]);
@@ -94,6 +97,21 @@ class User
             $params['avatar'] = $data['avatar'];
         }
 
+        if (isset($data['avatar_data'])) {
+            $fields[] = 'avatar_data = :avatar_data';
+            $params['avatar_data'] = $data['avatar_data'];
+        }
+
+        if (isset($data['avatar_mime_type'])) {
+            $fields[] = 'avatar_mime_type = :avatar_mime_type';
+            $params['avatar_mime_type'] = $data['avatar_mime_type'];
+        }
+
+        if (isset($data['avatar_size'])) {
+            $fields[] = 'avatar_size = :avatar_size';
+            $params['avatar_size'] = $data['avatar_size'];
+        }
+
         if (isset($data['settings'])) {
             $fields[] = 'settings = :settings';
             $params['settings'] = json_encode($data['settings']);
@@ -113,7 +131,11 @@ class User
             return $this->findById($id);
         }
 
-        $fields[] = 'updated_at = datetime(\'now\')';
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
+        $fields[] = "updated_at = {$nowFunction}";
         $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = :id";
 
         $this->db->execute($sql, $params);
@@ -204,7 +226,7 @@ class User
      */
     public function updateSettings(string $id, array $settings): ?array
     {
-        $sql = "UPDATE users SET settings = :settings, updated_at = NOW() WHERE id = :id";
+        $sql = "UPDATE users SET settings = :settings, updated_at = datetime('now') WHERE id = :id";
         
         $params = [
             'id' => $id,
@@ -240,5 +262,74 @@ class User
                 ? round(($taskStats['completed_tasks'] / $taskStats['total_tasks']) * 100, 2) 
                 : 0
         ];
+    }
+
+    /**
+     * Сохранить аватарку в базе данных
+     */
+    public function saveAvatar(string $userId, string $avatarData, string $mimeType, int $size): bool
+    {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
+        $sql = "UPDATE users SET 
+                    avatar_data = :avatar_data,
+                    avatar_mime_type = :avatar_mime_type,
+                    avatar_size = :avatar_size,
+                    updated_at = {$nowFunction}
+                WHERE id = :id";
+        
+        $params = [
+            'id' => $userId,
+            'avatar_data' => $avatarData,
+            'avatar_mime_type' => $mimeType,
+            'avatar_size' => $size
+        ];
+
+        $affected = $this->db->execute($sql, $params);
+        return $affected > 0;
+    }
+
+    /**
+     * Получить аватарку пользователя
+     */
+    public function getAvatar(string $userId): ?array
+    {
+        $sql = "SELECT avatar_data, avatar_mime_type, avatar_size 
+                FROM users WHERE id = :id";
+        
+        return $this->db->queryOne($sql, ['id' => $userId]);
+    }
+
+    /**
+     * Удалить аватарку пользователя
+     */
+    public function deleteAvatar(string $userId): bool
+    {
+        // Определяем тип базы данных для правильного синтаксиса
+        $dbType = $this->db->getDatabaseType();
+        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
+        
+        $sql = "UPDATE users SET 
+                    avatar_data = NULL,
+                    avatar_mime_type = NULL,
+                    avatar_size = NULL,
+                    updated_at = {$nowFunction}
+                WHERE id = :id";
+        
+        $affected = $this->db->execute($sql, ['id' => $userId]);
+        return $affected > 0;
+    }
+
+    /**
+     * Получить пользователя без аватарки (для списков)
+     */
+    public function findByIdWithoutAvatar(string $id): ?array
+    {
+        $sql = "SELECT id, email, name, avatar, settings, email_verified_at, created_at, updated_at 
+                FROM users WHERE id = :id";
+        
+        return $this->db->queryOne($sql, ['id' => $id]);
     }
 }

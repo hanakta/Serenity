@@ -1,162 +1,140 @@
-# 🚀 Serenity Todo Manager
+# Serenity - Task Management System
 
-Современный менеджер задач с ИИ-ассистентом для повышения продуктивности.
+A modern task management application with team collaboration features, built with Next.js frontend and PHP backend.
 
-## 📋 О проекте
+## Features
 
-**Serenity** - это полнофункциональное веб-приложение для управления задачами, созданное с использованием современных технологий. Проект направлен на помощь людям в планировании задач и потенциальном внедрении в образовательную программу Казахстана.
+- 🔐 User authentication and authorization
+- 📝 Task management with priorities and due dates
+- 👥 Team collaboration and chat
+- 📊 Task statistics and analytics
+- 🎨 Modern, responsive UI
+- 🔄 Real-time updates
 
-**Основатель:** Мырзат Нурислам
-
-## ✨ Основные возможности
-
-- 🏠 **Дашборд** - обзор продуктивности и статистика
-- 📝 **Управление задачами** - создание, редактирование, категоризация
-- 🔍 **Фильтрация и поиск** - умные фильтры по статусу, приоритету, категории
-- 📊 **Аналитика** - детальная статистика и отчеты
-- 📅 **Календарь** - планирование времени и отслеживание дедлайнов
-- 🔔 **Уведомления** - напоминания и оповещения
-- ⚙️ **Настройки** - профиль, темы, безопасность
-
-## 🛠️ Технологический стек
+## Tech Stack
 
 ### Frontend
-- **Next.js 15.5.2** - React фреймворк
-- **React 18** - UI библиотека
-- **TypeScript** - типизированный JavaScript
-- **Tailwind CSS** - utility-first CSS
-- **Framer Motion** - анимации
-- **Lucide React** - иконки
+- Next.js 15
+- TypeScript
+- Tailwind CSS
+- React Hooks
 
 ### Backend
-- **PHP 8.1+** - серверный язык
-- **Slim Framework 4** - веб фреймворк
-- **JWT** - аутентификация
-- **SQLite** - база данных
-- **RESTful API** - архитектура
+- PHP 8+
+- Slim Framework 4
+- MySQL
+- JWT Authentication
 
-## 🚀 Быстрый старт
+## Installation
 
-### Предварительные требования
+### Prerequisites
 - Node.js 18+
-- PHP 8.1+
+- PHP 8+
+- MySQL
 - Composer
 
-### Установка
+### Backend Setup
 
-1. **Клонируйте репозиторий**
+1. Navigate to backend directory:
 ```bash
-git clone https://github.com/yourusername/serenity-todo-manager.git
-cd serenity-todo-manager
+cd backend
 ```
 
-2. **Установите зависимости**
+2. Install PHP dependencies:
 ```bash
-# Frontend
-cd frontend
-npm install
-
-# Backend
-cd ../backend
 composer install
 ```
 
-3. **Настройте окружение**
+3. Create `.env` file:
 ```bash
-# Скопируйте файл конфигурации
-cp backend/.env.example backend/.env
-
-# Отредактируйте настройки в backend/.env
+cp env.example .env
 ```
 
-4. **Запустите приложение**
-```bash
-# Backend (в папке backend)
-php -S localhost:8000 -t public
+4. Configure database settings in `.env`:
+```
+DB_HOST=localhost
+DB_PORT=8889
+DB_DATABASE=serenity
+DB_USERNAME=root
+DB_PASSWORD=root
+DB_SOCKET=/Applications/MAMP/tmp/mysql/mysql.sock
+JWT_SECRET=your-super-secret-jwt-key-here
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION=86400
+CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+APP_URL=http://localhost:8000
+```
 
-# Frontend (в папке frontend)
+5. Start PHP server:
+```bash
+php -S localhost:8000 -t public
+```
+
+### Frontend Setup
+
+1. Navigate to frontend directory:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Create `.env.local` file:
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+4. Start development server:
+```bash
 npm run dev
 ```
 
-5. **Откройте браузер**
-```
-http://localhost:3000
-```
+## Database Setup
 
-## 📁 Структура проекта
+1. Create MySQL database named `serenity`
+2. Import the schema from `backend/database/schema.sql`
+3. Run any necessary migrations from `backend/database/` directory
+
+## Usage
+
+1. Start both backend and frontend servers
+2. Open http://localhost:3000 in your browser
+3. Register a new account or login
+4. Start managing your tasks and teams!
+
+## Project Structure
 
 ```
-serenity-todo-manager/
-├── frontend/                 # Next.js приложение
+├── backend/           # PHP backend
+│   ├── config/        # Configuration files
+│   ├── database/      # Database schemas and migrations
+│   ├── public/        # Public web files
+│   ├── src/           # Source code
+│   │   ├── Controllers/
+│   │   ├── Models/
+│   │   ├── Services/
+│   │   └── Middleware/
+│   └── vendor/        # Composer dependencies
+├── frontend/          # Next.js frontend
 │   ├── src/
-│   │   ├── app/             # App Router
-│   │   ├── components/      # React компоненты
-│   │   ├── hooks/           # Custom hooks
-│   │   └── lib/             # Утилиты
-│   └── package.json
-├── backend/                  # PHP API
-│   ├── src/
-│   │   ├── Controllers/     # Контроллеры
-│   │   ├── Models/          # Модели
-│   │   ├── Services/        # Сервисы
-│   │   └── Middleware/      # Middleware
+│   │   ├── app/       # Next.js app directory
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   └── lib/
 │   └── public/
-├── shared/                   # Общие файлы
-├── Serenity_Presentation.html # Презентация проекта
-└── README.md
+└── shared/            # Shared TypeScript types
 ```
 
-## 🎯 Планы развития
+## Contributing
 
-### Краткосрочные цели (3-6 месяцев)
-- 📱 Мобильное приложение (React Native)
-- 🔄 Офлайн режим
-- 🤖 ИИ-ассистент
-- 👥 Командная работа
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-### Среднесрочные цели (6-12 месяцев)
-- 🖥️ Desktop приложения (macOS, Windows)
-- 🔗 Интеграции (Google Calendar, Notion)
-- 📈 Расширенная аналитика
-- 🔌 API для разработчиков
+## License
 
-### Долгосрочные цели (1-2 года)
-- 🎓 Образовательная платформа
-- 🌍 Многоязычность
-- 🏢 Корпоративные функции
-- 🌐 Глобальное масштабирование
-
-## 🎓 Образовательная миссия
-
-Проект направлен на внедрение современных инструментов планирования в образовательную систему Казахстана, включая:
-
-- Планирование учебных задач
-- Проектную работу студентов
-- Отчеты для преподавателей
-- Интеграцию с учебными заведениями
-
-## 🤝 Вклад в проект
-
-Мы приветствуем вклад в развитие проекта! Пожалуйста:
-
-1. Форкните репозиторий
-2. Создайте ветку для новой функции (`git checkout -b feature/AmazingFeature`)
-3. Зафиксируйте изменения (`git commit -m 'Add some AmazingFeature'`)
-4. Отправьте в ветку (`git push origin feature/AmazingFeature`)
-5. Откройте Pull Request
-
-## 📄 Лицензия
-
-Этот проект распространяется под лицензией MIT. См. файл `LICENSE` для подробностей.
-
-## 📞 Контакты
-
-**Основатель:** Мырзат Нурислам
-
-**Проект:** Serenity Todo Manager
-
-**Версия:** 1.0.0
-
----
-
-Создано с ❤️ для повышения продуктивности и организации жизни
+This project is licensed under the MIT License.

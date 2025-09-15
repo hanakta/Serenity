@@ -144,30 +144,32 @@ class UserController
                 return $this->responseService->error('Ошибка валидации файла', 400, $validation['errors']);
             }
 
-            // Загружаем файл
-            $uploadResult = $this->fileService->uploadImage($fileData, 'avatars');
-            if (!$uploadResult['success']) {
-                return $this->responseService->error('Ошибка загрузки файла: ' . $uploadResult['error'], 500);
+            // Читаем содержимое файла
+            $fileContent = file_get_contents($fileData['tmp_name']);
+            if ($fileContent === false) {
+                return $this->responseService->error('Не удалось прочитать файл', 500);
             }
 
-            // Обновляем аватар в базе данных
-            $updated = $this->userModel->update($userId, [
-                'avatar' => $uploadResult['url']
-            ]);
+            // Конвертируем в base64 для хранения в БД
+            $base64Data = base64_encode($fileContent);
+            $mimeType = $fileData['type'];
+            $fileSize = $fileData['size'];
 
-            if (!$updated) {
-                // Удаляем загруженный файл, если не удалось обновить БД
-                $this->fileService->deleteFile($uploadResult['path']);
-                return $this->responseService->error('Не удалось обновить аватар', 500);
+            // Сохраняем аватарку в базе данных
+            $saved = $this->userModel->saveAvatar($userId, $base64Data, $mimeType, $fileSize);
+            if (!$saved) {
+                return $this->responseService->error('Не удалось сохранить аватар', 500);
             }
 
-            // Получаем обновленные данные пользователя
-            $updatedUser = $this->userModel->findById($userId);
+            // Получаем обновленные данные пользователя (без аватарки для экономии трафика)
+            $updatedUser = $this->userModel->findByIdWithoutAvatar($userId);
             unset($updatedUser['password_hash']);
+
+            // Устанавливаем URL для получения аватарки
+            $updatedUser['avatar'] = 'http://localhost:8000/api/profile/avatar';
 
             return $this->responseService->success([
                 'user' => $updatedUser,
-                'avatar_url' => $uploadResult['url'],
                 'message' => 'Аватар успешно загружен'
             ]);
         } catch (\Exception $e) {
@@ -189,22 +191,14 @@ class UserController
                 return $this->responseService->error('Пользователь не найден', 404);
             }
 
-            // Удаляем старый аватар, если он есть
-            if ($user['avatar']) {
-                $this->fileService->deleteFileByUrl($user['avatar']);
-            }
-
-            // Обновляем аватар в базе данных
-            $updated = $this->userModel->update($userId, [
-                'avatar' => null
-            ]);
-
-            if (!$updated) {
+            // Удаляем аватарку из базы данных
+            $deleted = $this->userModel->deleteAvatar($userId);
+            if (!$deleted) {
                 return $this->responseService->error('Не удалось удалить аватар', 500);
             }
 
             // Получаем обновленные данные пользователя
-            $updatedUser = $this->userModel->findById($userId);
+            $updatedUser = $this->userModel->findByIdWithoutAvatar($userId);
             unset($updatedUser['password_hash']);
 
             return $this->responseService->success([
@@ -256,6 +250,39 @@ class UserController
             ]);
         } catch (\Exception $e) {
             return $this->responseService->error('Ошибка изменения пароля: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Получить аватарку пользователя
+     */
+    public function getAvatar($request, $response)
+    {
+        try {
+            $userId = $request->getAttribute('user_id');
+            
+            // Получаем аватарку из базы данных
+            $avatarData = $this->userModel->getAvatar($userId);
+            if (!$avatarData || !$avatarData['avatar_data']) {
+                return $this->responseService->error('Аватар не найден', 404);
+            }
+
+            // Декодируем base64 данные
+            $imageData = base64_decode($avatarData['avatar_data']);
+            if ($imageData === false) {
+                return $this->responseService->error('Ошибка декодирования аватара', 500);
+            }
+
+            // Устанавливаем заголовки для изображения
+            $response = $response->withHeader('Content-Type', $avatarData['avatar_mime_type']);
+            $response = $response->withHeader('Content-Length', (string)$avatarData['avatar_size']);
+            $response = $response->withHeader('Cache-Control', 'public, max-age=3600'); // Кэшируем на час
+
+            // Возвращаем изображение
+            $response->getBody()->write($imageData);
+            return $response;
+        } catch (\Exception $e) {
+            return $this->responseService->error('Ошибка получения аватара: ' . $e->getMessage(), 500);
         }
     }
 }

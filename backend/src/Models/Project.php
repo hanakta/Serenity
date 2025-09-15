@@ -19,15 +19,16 @@ class Project
      */
     public function create(array $data): array
     {
-        $sql = "INSERT INTO projects (id, name, description, color, user_id) 
-                VALUES (:id, :name, :description, :color, :user_id)";
+        $sql = "INSERT INTO projects (id, name, description, color, user_id, team_id) 
+                VALUES (:id, :name, :description, :color, :user_id, :team_id)";
         
         $params = [
             'id' => uniqid('project_', true),
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'color' => $data['color'] ?? '#3B82F6',
-            'user_id' => $data['user_id']
+            'user_id' => $data['user_id'],
+            'team_id' => $data['team_id'] ?? null
         ];
 
         $this->db->execute($sql, $params);
@@ -165,7 +166,7 @@ class Project
                     SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_tasks,
                     SUM(CASE WHEN t.status = 'todo' THEN 1 ELSE 0 END) as todo_tasks,
                     SUM(CASE WHEN t.priority = 'urgent' THEN 1 ELSE 0 END) as urgent_tasks,
-                    SUM(CASE WHEN t.due_date < NOW() AND t.status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
+                    SUM(CASE WHEN t.due_date < datetime('now') AND t.status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks
                 FROM tasks t
                 WHERE t.project_id = :project_id AND t.user_id = :user_id";
 
@@ -238,5 +239,55 @@ class Project
         $sql = "SELECT COUNT(*) as total FROM projects WHERE user_id = :user_id";
         $result = $this->db->queryOne($sql, ['user_id' => $userId]);
         return (int) $result['total'];
+    }
+
+    /**
+     * Получить проекты команды
+     */
+    public function getByTeamId(string $teamId, int $page = 1, int $limit = 20): array
+    {
+        $offset = ($page - 1) * $limit;
+        
+        $sql = "SELECT p.*, 
+                       COUNT(t.id) as task_count,
+                       SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+                       u.name as owner_name, u.email as owner_email
+                FROM projects p
+                LEFT JOIN tasks t ON p.id = t.project_id
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.team_id = :team_id
+                GROUP BY p.id
+                ORDER BY p.created_at DESC
+                LIMIT :limit OFFSET :offset";
+        
+        return $this->db->query($sql, [
+            'team_id' => $teamId,
+            'limit' => $limit,
+            'offset' => $offset
+        ]);
+    }
+
+    /**
+     * Получить статистику проектов команды
+     */
+    public function getTeamStats(string $teamId): array
+    {
+        $sql = "SELECT 
+                    COUNT(*) as total_projects,
+                    SUM(CASE WHEN p.created_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) as recent_projects,
+                    AVG(task_counts.task_count) as avg_tasks_per_project,
+                    SUM(task_counts.completed_tasks) as total_completed_tasks,
+                    SUM(task_counts.task_count) as total_tasks
+                FROM projects p
+                LEFT JOIN (
+                    SELECT project_id, 
+                           COUNT(*) as task_count,
+                           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks
+                    FROM tasks 
+                    GROUP BY project_id
+                ) task_counts ON p.id = task_counts.project_id
+                WHERE p.team_id = :team_id";
+        
+        return $this->db->queryOne($sql, ['team_id' => $teamId]);
     }
 }

@@ -73,7 +73,7 @@ class TaskComment
      */
     public function update($id, $content)
     {
-        $query = "UPDATE task_comments SET content = ?, updated_at = NOW() WHERE id = ?";
+        $query = "UPDATE task_comments SET content = ?, updated_at = datetime('now') WHERE id = ?";
         $stmt = $this->db->getConnection()->prepare($query);
         return $stmt->execute([$content, $id]);
     }

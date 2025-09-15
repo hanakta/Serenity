@@ -1,5 +1,4 @@
 <?php
-// 🐱 Middleware для аутентификации в Serenity
 
 namespace App\Middleware;
 
@@ -7,101 +6,70 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use App\Services\JWTService;
-use Dotenv\Dotenv;
+use App\Services\ResponseService;
 
 class AuthMiddleware
 {
-    private JWTService $jwtService;
+    private $jwtService;
+    private $responseService;
 
     public function __construct()
-    {   
-        // Загружаем переменные окружения
-        $dotenv = Dotenv::createImmutable(__DIR__ . '/../..');
-        $dotenv->load();
-        
+    {
         $this->jwtService = new JWTService();
+        $this->responseService = new ResponseService();
     }
 
-    public function __invoke($request, $handler)
+    /**
+     * Middleware для проверки аутентификации
+     */
+    public function __invoke(Request $request, RequestHandler $handler): Response
     {
-        // Получаем токен из заголовка Authorization
         $authHeader = $request->getHeaderLine('Authorization');
-        $token = $this->jwtService->extractTokenFromHeader($authHeader);
-
-        if (!$token) {
-            return $this->unauthorizedResponse();
+        
+        if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+            return $this->responseService->error('Токен авторизации не найден', 401);
         }
 
+        $token = $matches[1];
+        
         try {
-            // Валидируем токен
             $payload = $this->jwtService->validateToken($token);
-
-            // Проверяем, что это access токен
-            if (!$this->jwtService->isAccessToken($payload)) {
-                return $this->unauthorizedResponse('Недействительный тип токена');
+            
+            // Проверяем валидность payload
+            if (!$payload || !isset($payload['user_id']) || empty($payload['user_id'])) {
+                return $this->responseService->error('Недействительный токен', 401);
             }
-
-            // Проверяем, не истек ли токен
-            if ($this->jwtService->isTokenExpired($payload)) {
-                return $this->unauthorizedResponse('Токен истек');
+            
+            // Проверяем, что токен не истек
+            if (isset($payload['exp']) && $payload['exp'] < time()) {
+                return $this->responseService->error('Токен истек', 401);
             }
-
-            // Добавляем user_id в атрибуты запроса
+            
+            // Добавляем информацию о пользователе в атрибуты запроса
             $request = $request->withAttribute('user_id', $payload['user_id']);
-            $request = $request->withAttribute('token_payload', $payload);
-
+            $request = $request->withAttribute('user_payload', $payload);
+            
             return $handler->handle($request);
-
+            
         } catch (\Exception $e) {
-            // Логируем ошибку для отладки
-            error_log('AuthMiddleware Error: ' . $e->getMessage());
-            error_log('Token: ' . $token);
-            
-            // Если это ошибка "Invalid HTTP status code", попробуем другой подход
-            if (strpos($e->getMessage(), 'Invalid HTTP status code') !== false) {
-                try {
-                    // Попробуем валидировать токен напрямую
-                    $payload = $this->jwtService->validateToken($token);
-                    
-                    // Проверяем, что это access токен
-                    if (!$this->jwtService->isAccessToken($payload)) {
-                        return $this->unauthorizedResponse('Недействительный тип токена');
-                    }
-
-                    // Проверяем, не истек ли токен
-                    if ($this->jwtService->isTokenExpired($payload)) {
-                        return $this->unauthorizedResponse('Токен истек');
-                    }
-
-                    // Добавляем user_id в атрибуты запроса
-                    $request = $request->withAttribute('user_id', $payload['user_id']);
-                    $request = $request->withAttribute('token_payload', $payload);
-
-                    return $handler->handle($request);
-                } catch (\Exception $e2) {
-                    return $this->unauthorizedResponse('Недействительный токен: ' . $e2->getMessage());
-                }
-            }
-            
-            return $this->unauthorizedResponse('Недействительный токен: ' . $e->getMessage());
+            error_log("Auth middleware error: " . $e->getMessage());
+            return $this->responseService->error('Ошибка аутентификации', 401);
         }
     }
 
     /**
-     * Создание ответа с ошибкой авторизации
+     * Получить ID пользователя из запроса
      */
-    private function unauthorizedResponse(string $message = 'Требуется авторизация')
+    public static function getUserId($request)
     {
-        $response = new \Slim\Psr7\Response();
-        $response->getBody()->write(json_encode([
-            'success' => false,
-            'message' => $message,
-            'error' => 'Unauthorized'
-        ], JSON_UNESCAPED_UNICODE));
-        
-        return $response
-            ->withStatus(401)
-            ->withHeader('Content-Type', 'application/json')
-            ->withHeader('WWW-Authenticate', 'Bearer');
+        return $request->getAttribute('user_id');
+    }
+
+    /**
+     * Получить payload пользователя из запроса
+     */
+    public static function getUserPayload($request)
+    {
+        return $request->getAttribute('user_payload');
     }
 }

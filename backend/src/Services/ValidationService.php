@@ -512,4 +512,144 @@ class ValidationService
 
         return $errors;
     }
+
+    /**
+     * Валидация создания задачи
+     */
+    public function validateTaskCreation(array $data): array
+    {
+        $errors = [];
+
+        // Валидация заголовка
+        if (empty($data['title'])) {
+            $errors['title'] = 'Заголовок задачи обязателен';
+        } elseif (strlen($data['title']) < 1) {
+            $errors['title'] = 'Заголовок не может быть пустым';
+        } elseif (strlen($data['title']) > 255) {
+            $errors['title'] = 'Заголовок не должен превышать 255 символов';
+        }
+
+        // Валидация описания (необязательно)
+        if (isset($data['description']) && strlen($data['description']) > 1000) {
+            $errors['description'] = 'Описание не должно превышать 1000 символов';
+        }
+
+        // Валидация статуса
+        $validStatuses = ['todo', 'in_progress', 'completed', 'cancelled'];
+        if (isset($data['status']) && !in_array($data['status'], $validStatuses)) {
+            $errors['status'] = 'Некорректный статус задачи';
+        }
+
+        // Валидация приоритета
+        $validPriorities = ['low', 'medium', 'high', 'urgent'];
+        if (isset($data['priority']) && !in_array($data['priority'], $validPriorities)) {
+            $errors['priority'] = 'Некорректный приоритет задачи';
+        }
+
+        // Валидация категории
+        $validCategories = ['personal', 'work', 'health', 'learning', 'shopping', 'other'];
+        if (isset($data['category']) && !in_array($data['category'], $validCategories)) {
+            $errors['category'] = 'Некорректная категория задачи';
+        }
+
+        // Валидация даты (необязательно)
+        if (isset($data['due_date']) && !empty($data['due_date'])) {
+            $dueDate = strtotime($data['due_date']);
+            if ($dueDate === false) {
+                $errors['due_date'] = 'Некорректный формат даты';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Валидация создания проекта
+     */
+    public function validateProjectCreation(array $data): array
+    {
+        $errors = [];
+
+        // Валидация названия
+        if (empty($data['name'])) {
+            $errors['name'] = 'Название проекта обязательно';
+        } elseif (strlen($data['name']) < 1) {
+            $errors['name'] = 'Название не может быть пустым';
+        } elseif (strlen($data['name']) > 255) {
+            $errors['name'] = 'Название не должно превышать 255 символов';
+        }
+
+        // Валидация описания (необязательно)
+        if (isset($data['description']) && strlen($data['description']) > 1000) {
+            $errors['description'] = 'Описание не должно превышать 1000 символов';
+        }
+
+        // Валидация цвета (необязательно)
+        if (isset($data['color']) && !empty($data['color'])) {
+            if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $data['color'])) {
+                $errors['color'] = 'Некорректный формат цвета (должен быть #RRGGBB)';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Универсальная валидация с правилами
+     */
+    public function validate(array $data, array $rules): array
+    {
+        $errors = [];
+
+        foreach ($rules as $field => $rule) {
+            $fieldValue = $data[$field] ?? null;
+            $ruleParts = explode('|', $rule);
+
+            foreach ($ruleParts as $rulePart) {
+                $rulePart = trim($rulePart);
+                
+                if ($rulePart === 'required') {
+                    if (empty($fieldValue)) {
+                        $errors[$field] = "Поле {$field} обязательно";
+                        break;
+                    }
+                } elseif (strpos($rulePart, 'string') === 0) {
+                    if (!empty($fieldValue) && !is_string($fieldValue)) {
+                        $errors[$field] = "Поле {$field} должно быть строкой";
+                    }
+                } elseif (strpos($rulePart, 'email') === 0) {
+                    if (!empty($fieldValue) && !filter_var($fieldValue, FILTER_VALIDATE_EMAIL)) {
+                        $errors[$field] = "Некорректный формат email";
+                    }
+                } elseif (strpos($rulePart, 'integer') === 0) {
+                    if (!empty($fieldValue) && !is_numeric($fieldValue)) {
+                        $errors[$field] = "Поле {$field} должно быть числом";
+                    }
+                } elseif (strpos($rulePart, 'array') === 0) {
+                    if (!empty($fieldValue) && !is_array($fieldValue)) {
+                        $errors[$field] = "Поле {$field} должно быть массивом";
+                    }
+                } elseif (strpos($rulePart, 'max:') === 0) {
+                    $maxLength = (int) substr($rulePart, 4);
+                    if (!empty($fieldValue) && strlen($fieldValue) > $maxLength) {
+                        $errors[$field] = "Поле {$field} не должно превышать {$maxLength} символов";
+                    }
+                } elseif (strpos($rulePart, 'in:') === 0) {
+                    $allowedValues = explode(',', substr($rulePart, 3));
+                    if (!empty($fieldValue) && !in_array($fieldValue, $allowedValues)) {
+                        $errors[$field] = "Некорректное значение для поля {$field}";
+                    }
+                } elseif ($rulePart === 'date') {
+                    if (!empty($fieldValue) && !strtotime($fieldValue)) {
+                        $errors[$field] = "Некорректный формат даты для поля {$field}";
+                    }
+                }
+            }
+        }
+
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors
+        ];
+    }
 }

@@ -31,9 +31,17 @@ class TeamCollaborationController
     public function getActivity($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
-            $teamId = $args['id'];
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+
+            $teamId = $args['id'] ?? null;
+            
+            // Проверяем, является ли пользователь участником команды
+            if (!$this->teamModel->isMember($teamId, $userId)) {
+                return $this->responseService->error('Доступ запрещен', 403);
+            }
 
             $queryParams = $request->getQueryParams();
             $limit = $queryParams['limit'] ?? 50;
@@ -56,14 +64,14 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $data = $request->getParsedBody();
@@ -77,7 +85,7 @@ class TeamCollaborationController
             ]);
 
             if (!$validation['valid']) {
-                return $this->responseService->error($response, $validation['errors'], 400);
+                return $this->responseService->error( $validation['errors'], 400);
             }
 
             $activityData = [
@@ -92,13 +100,13 @@ class TeamCollaborationController
             $activity = $this->collaborationModel->create($activityData);
             
             if ($activity) {
-                return $this->responseService->success($response, $activity, 'Активность создана', 201);
+                return $this->responseService->success( $activity, 'Активность создана', 201);
             } else {
-                return $this->responseService->error($response, 'Ошибка создания активности', 500);
+                return $this->responseService->error( 'Ошибка создания активности', 500);
             }
         } catch (\Exception $e) {
             error_log("Ошибка создания активности: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка создания активности', 500);
+            return $this->responseService->error( 'Ошибка создания активности', 500);
         }
     }
 
@@ -110,24 +118,24 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
-            $activityType = $args['type'];
+            $teamId = $args['id'] ?? null;
+            $activityType = $args['type'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $limit = $request->getQueryParam('limit', 20);
             $activities = $this->collaborationModel->getByType($teamId, $activityType, $limit);
             
-            return $this->responseService->success($response, $activities, 'Активность по типу получена');
+            return $this->responseService->success( $activities, 'Активность по типу получена');
         } catch (\Exception $e) {
             error_log("Ошибка получения активности по типу: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка получения активности по типу', 500);
+            return $this->responseService->error( 'Ошибка получения активности по типу', 500);
         }
     }
 
@@ -139,24 +147,24 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             $targetUserId = $args['user_id'] ?? $userId;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $limit = $request->getQueryParam('limit', 20);
             $activities = $this->collaborationModel->getByUserInTeam($teamId, $targetUserId, $limit);
             
-            return $this->responseService->success($response, $activities, 'Активность пользователя получена');
+            return $this->responseService->success( $activities, 'Активность пользователя получена');
         } catch (\Exception $e) {
             error_log("Ошибка получения активности пользователя: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка получения активности пользователя', 500);
+            return $this->responseService->error( 'Ошибка получения активности пользователя', 500);
         }
     }
 
@@ -168,23 +176,23 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $days = $request->getQueryParam('days', 30);
             $stats = $this->collaborationModel->getStats($teamId, $days);
             
-            return $this->responseService->success($response, $stats, 'Статистика активности получена');
+            return $this->responseService->success( $stats, 'Статистика активности получена');
         } catch (\Exception $e) {
             error_log("Ошибка получения статистики активности: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка получения статистики активности', 500);
+            return $this->responseService->error( 'Ошибка получения статистики активности', 500);
         }
     }
 
@@ -196,24 +204,24 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $limit = $request->getQueryParam('limit', 10);
             $days = $request->getQueryParam('days', 30);
             $users = $this->collaborationModel->getTopActiveUsers($teamId, $limit, $days);
             
-            return $this->responseService->success($response, $users, 'Топ активных пользователей получен');
+            return $this->responseService->success( $users, 'Топ активных пользователей получен');
         } catch (\Exception $e) {
             error_log("Ошибка получения топ активных пользователей: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка получения топ активных пользователей', 500);
+            return $this->responseService->error( 'Ошибка получения топ активных пользователей', 500);
         }
     }
 
@@ -225,29 +233,29 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $startDate = $request->getQueryParam('start_date');
             $endDate = $request->getQueryParam('end_date');
 
             if (!$startDate || !$endDate) {
-                return $this->responseService->error($response, 'Необходимо указать start_date и end_date', 400);
+                return $this->responseService->error( 'Необходимо указать start_date и end_date', 400);
             }
 
             $activities = $this->collaborationModel->getActivityByPeriod($teamId, $startDate, $endDate);
             
-            return $this->responseService->success($response, $activities, 'Активность за период получена');
+            return $this->responseService->success( $activities, 'Активность за период получена');
         } catch (\Exception $e) {
             error_log("Ошибка получения активности за период: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка получения активности за период', 500);
+            return $this->responseService->error( 'Ошибка получения активности за период', 500);
         }
     }
 
@@ -259,23 +267,23 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь владельцем команды
             if (!$this->teamModel->isOwner($teamId, $userId)) {
-                return $this->responseService->error($response, 'Недостаточно прав для очистки активности', 403);
+                return $this->responseService->error( 'Недостаточно прав для очистки активности', 403);
             }
 
             $days = $request->getQueryParam('days', 90);
             $deletedCount = $this->collaborationModel->cleanupOldActivities($days);
             
-            return $this->responseService->success($response, ['deleted_count' => $deletedCount], 'Старая активность очищена');
+            return $this->responseService->success( ['deleted_count' => $deletedCount], 'Старая активность очищена');
         } catch (\Exception $e) {
             error_log("Ошибка очистки старой активности: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка очистки старой активности', 500);
+            return $this->responseService->error( 'Ошибка очистки старой активности', 500);
         }
     }
 
@@ -287,14 +295,14 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $data = $request->getParsedBody();
@@ -306,7 +314,7 @@ class TeamCollaborationController
             ]);
 
             if (!$validation['valid']) {
-                return $this->responseService->error($response, $validation['errors'], 400);
+                return $this->responseService->error( $validation['errors'], 400);
             }
 
             $activity = $this->collaborationModel->createTaskActivity(
@@ -317,13 +325,13 @@ class TeamCollaborationController
             );
             
             if ($activity) {
-                return $this->responseService->success($response, $activity, 'Активность задачи создана', 201);
+                return $this->responseService->success( $activity, 'Активность задачи создана', 201);
             } else {
-                return $this->responseService->error($response, 'Ошибка создания активности задачи', 500);
+                return $this->responseService->error( 'Ошибка создания активности задачи', 500);
             }
         } catch (\Exception $e) {
             error_log("Ошибка создания активности задачи: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка создания активности задачи', 500);
+            return $this->responseService->error( 'Ошибка создания активности задачи', 500);
         }
     }
 
@@ -335,14 +343,14 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $data = $request->getParsedBody();
@@ -354,7 +362,7 @@ class TeamCollaborationController
             ]);
 
             if (!$validation['valid']) {
-                return $this->responseService->error($response, $validation['errors'], 400);
+                return $this->responseService->error( $validation['errors'], 400);
             }
 
             $activity = $this->collaborationModel->createProjectActivity(
@@ -365,13 +373,13 @@ class TeamCollaborationController
             );
             
             if ($activity) {
-                return $this->responseService->success($response, $activity, 'Активность проекта создана', 201);
+                return $this->responseService->success( $activity, 'Активность проекта создана', 201);
             } else {
-                return $this->responseService->error($response, 'Ошибка создания активности проекта', 500);
+                return $this->responseService->error( 'Ошибка создания активности проекта', 500);
             }
         } catch (\Exception $e) {
             error_log("Ошибка создания активности проекта: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка создания активности проекта', 500);
+            return $this->responseService->error( 'Ошибка создания активности проекта', 500);
         }
     }
 
@@ -383,14 +391,14 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $data = $request->getParsedBody();
@@ -402,7 +410,7 @@ class TeamCollaborationController
             ]);
 
             if (!$validation['valid']) {
-                return $this->responseService->error($response, $validation['errors'], 400);
+                return $this->responseService->error( $validation['errors'], 400);
             }
 
             $activity = $this->collaborationModel->createFileActivity(
@@ -413,13 +421,13 @@ class TeamCollaborationController
             );
             
             if ($activity) {
-                return $this->responseService->success($response, $activity, 'Активность файла создана', 201);
+                return $this->responseService->success( $activity, 'Активность файла создана', 201);
             } else {
-                return $this->responseService->error($response, 'Ошибка создания активности файла', 500);
+                return $this->responseService->error( 'Ошибка создания активности файла', 500);
             }
         } catch (\Exception $e) {
             error_log("Ошибка создания активности файла: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка создания активности файла', 500);
+            return $this->responseService->error( 'Ошибка создания активности файла', 500);
         }
     }
 
@@ -431,14 +439,14 @@ class TeamCollaborationController
         try {
             $userId = $this->getCurrentUserId($request);
             if (!$userId) {
-                return $this->responseService->error($response, 'Неавторизованный доступ', 401);
+                return $this->responseService->error('Неавторизованный доступ', 401);
             }
 
-            $teamId = $args['id'];
+            $teamId = $args['id'] ?? null;
             
             // Проверяем, является ли пользователь участником команды
             if (!$this->teamModel->isMember($teamId, $userId)) {
-                return $this->responseService->error($response, 'Доступ запрещен', 403);
+                return $this->responseService->error('Доступ запрещен', 403);
             }
 
             $data = $request->getParsedBody();
@@ -450,7 +458,7 @@ class TeamCollaborationController
             ]);
 
             if (!$validation['valid']) {
-                return $this->responseService->error($response, $validation['errors'], 400);
+                return $this->responseService->error( $validation['errors'], 400);
             }
 
             $activity = $this->collaborationModel->createCommentActivity(
@@ -461,13 +469,156 @@ class TeamCollaborationController
             );
             
             if ($activity) {
-                return $this->responseService->success($response, $activity, 'Активность комментария создана', 201);
+                return $this->responseService->success( $activity, 'Активность комментария создана', 201);
             } else {
-                return $this->responseService->error($response, 'Ошибка создания активности комментария', 500);
+                return $this->responseService->error( 'Ошибка создания активности комментария', 500);
             }
         } catch (\Exception $e) {
             error_log("Ошибка создания активности комментария: " . $e->getMessage());
-            return $this->responseService->error($response, 'Ошибка создания активности комментария', 500);
+            return $this->responseService->error( 'Ошибка создания активности комментария', 500);
+        }
+    }
+
+    /**
+     * Создать ручную активность
+     */
+    public function createManualActivity($request, $response, $args)
+    {
+        try {
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+
+            $teamId = $args['id'] ?? null;
+            
+            // Проверяем, является ли пользователь участником команды
+            if (!$this->teamModel->isMember($teamId, $userId)) {
+                return $this->responseService->error('Доступ запрещен', 403);
+            }
+
+            $data = $request->getParsedBody();
+            
+            // Валидация
+            $validation = $this->validationService->validate($data, [
+                'title' => 'required|string|max:255',
+                'description' => 'required|string|max:1000',
+                'category' => 'optional|string|max:50'
+            ]);
+
+            if (!$validation['valid']) {
+                return $this->responseService->error($validation['errors'], 400);
+            }
+
+            $activityData = [
+                'team_id' => $teamId,
+                'user_id' => $userId,
+                'activity_type' => 'comment_added',
+                'activity_data' => [
+                    'title' => $data['title'],
+                    'description' => $data['description'],
+                    'category' => $data['category'] ?? 'general',
+                    'created_manually' => true
+                ],
+                'target_id' => null,
+                'target_type' => null
+            ];
+
+            $activity = $this->collaborationModel->create($activityData);
+            
+            if ($activity) {
+                return $this->responseService->success($activity, 'Ручная активность создана', 201);
+            } else {
+                return $this->responseService->error('Ошибка создания ручной активности', 500);
+            }
+        } catch (\Exception $e) {
+            error_log("Ошибка создания ручной активности: " . $e->getMessage());
+            return $this->responseService->error('Ошибка создания ручной активности', 500);
+        }
+    }
+
+    /**
+     * Получить уведомления команды
+     */
+    public function getTeamNotifications($request, $response, $args)
+    {
+        try {
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+
+            $teamId = $args['id'] ?? null;
+            
+            // Проверяем, является ли пользователь участником команды
+            if (!$this->teamModel->isMember($teamId, $userId)) {
+                return $this->responseService->error('Доступ запрещен', 403);
+            }
+
+            $queryParams = $request->getQueryParams();
+            $limit = $queryParams['limit'] ?? 20;
+            $offset = $queryParams['offset'] ?? 0;
+            $unreadOnly = $queryParams['unread_only'] ?? false;
+
+            $notifications = $this->collaborationModel->getTeamNotifications($teamId, $userId, $limit, $offset, $unreadOnly);
+            
+            return $this->responseService->success( ['notifications' => $notifications], 'Уведомления команды получены');
+        } catch (\Exception $e) {
+            error_log("Ошибка получения уведомлений команды: " . $e->getMessage());
+            return $this->responseService->error( 'Ошибка получения уведомлений команды', 500);
+        }
+    }
+
+    /**
+     * Отметить уведомление как прочитанное
+     */
+    public function markNotificationAsRead($request, $response, $args)
+    {
+        try {
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+
+            $notificationId = $args['notification_id'] ?? null;
+            
+            $result = $this->collaborationModel->markNotificationAsRead($notificationId, $userId);
+            
+            if ($result) {
+                return $this->responseService->success( [], 'Уведомление отмечено как прочитанное');
+            } else {
+                return $this->responseService->error( 'Ошибка обновления уведомления', 500);
+            }
+        } catch (\Exception $e) {
+            error_log("Ошибка отметки уведомления как прочитанного: " . $e->getMessage());
+            return $this->responseService->error( 'Ошибка отметки уведомления как прочитанного', 500);
+        }
+    }
+
+    /**
+     * Отметить все уведомления команды как прочитанные
+     */
+    public function markAllNotificationsAsRead($request, $response, $args)
+    {
+        try {
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+
+            $teamId = $args['id'] ?? null;
+            
+            // Проверяем, является ли пользователь участником команды
+            if (!$this->teamModel->isMember($teamId, $userId)) {
+                return $this->responseService->error('Доступ запрещен', 403);
+            }
+
+            $result = $this->collaborationModel->markAllNotificationsAsRead($teamId, $userId);
+            
+            return $this->responseService->success( ['updated_count' => $result], 'Все уведомления отмечены как прочитанные');
+        } catch (\Exception $e) {
+            error_log("Ошибка отметки всех уведомлений как прочитанных: " . $e->getMessage());
+            return $this->responseService->error( 'Ошибка отметки всех уведомлений как прочитанных', 500);
         }
     }
 
@@ -476,14 +627,19 @@ class TeamCollaborationController
      */
     private function getCurrentUserId($request)
     {
-        $authHeader = $request->getHeaderLine('Authorization');
-        if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+        try {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+                return null;
+            }
+
+            $token = $matches[1];
+            $payload = $this->jwtService->validateToken($token);
+            
+            return $payload ? $payload['user_id'] : null;
+        } catch (\Exception $e) {
+            error_log("Error getting current user ID: " . $e->getMessage());
             return null;
         }
-
-        $token = $matches[1];
-        $payload = $this->jwtService->validateToken($token);
-        
-        return $payload ? $payload['user_id'] : null;
     }
 }

@@ -1,7 +1,8 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { User, Mail, Calendar, Shield, LogOut, Edit3, Crown, Star } from 'lucide-react'
+import { User, Mail, Calendar, Shield, LogOut, Edit3, Crown, Star, Settings } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import AvatarImage from './AvatarImage'
 
 interface User {
@@ -9,6 +10,7 @@ interface User {
   name: string
   email: string
   avatar?: string
+  role?: 'user' | 'admin' | 'super_admin'
 }
 
 interface PremiumUserProfileProps {
@@ -19,8 +21,13 @@ interface PremiumUserProfileProps {
 }
 
 export default function PremiumUserProfile({ user, onLogout, onEdit, isActive = false }: PremiumUserProfileProps) {
+  const router = useRouter()
+  
   // Генерируем инициалы из имени
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | null | undefined) => {
+    if (!name || typeof name !== 'string') {
+      return '??';
+    }
     return name
       .split(' ')
       .map(word => word.charAt(0))
@@ -289,6 +296,23 @@ export default function PremiumUserProfile({ user, onLogout, onEdit, isActive = 
               whileTap={{ scale: 0.95 }}
             >
               <Edit3 className="w-4 h-4" />
+            </motion.button>
+          )}
+
+          {/* Кнопка админ-панели для администраторов */}
+          {user.role && ['admin', 'super_admin'].includes(user.role) && (
+            <motion.button
+              onClick={() => router.push('/admin')}
+              className="p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 transition-all duration-300"
+              whileHover={{ 
+                scale: 1.1, 
+                rotate: -15,
+                transition: { duration: 0.3 }
+              }}
+              whileTap={{ scale: 0.95 }}
+              title="Админ-панель"
+            >
+              <Settings className="w-4 h-4" />
             </motion.button>
           )}
 

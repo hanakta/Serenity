@@ -20,7 +20,8 @@ import {
   Sparkles,
   Zap,
   Target,
-  Award
+  Award,
+  Timer
 } from 'lucide-react'
 import AvatarImage from './AvatarImage'
 
@@ -74,6 +75,14 @@ const Sidebar = memo(function Sidebar({ currentView, onViewChange, onCreateTask,
       description: 'Управление задачами'
     },
     { 
+      id: 'focus', 
+      label: 'Фокус', 
+      icon: Timer, 
+      color: 'text-red-400',
+      gradient: 'from-red-500/20 to-pink-500/20',
+      description: 'Pomodoro таймер'
+    },
+    { 
       id: 'teams', 
       label: 'Мои команды', 
       icon: Users, 
@@ -99,11 +108,11 @@ const Sidebar = memo(function Sidebar({ currentView, onViewChange, onCreateTask,
     },
     { 
       id: 'analytics', 
-      label: 'Аналитика', 
+      label: 'Аналитика и статистика', 
       icon: BarChart3, 
       color: 'text-purple-400',
       gradient: 'from-purple-500/20 to-indigo-500/20',
-      description: 'Отчеты и метрики'
+      description: 'Отчеты, метрики и статистика'
     },
     { 
       id: 'calendar', 

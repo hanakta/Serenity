@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, createContext, useContext } from 'react'
-import { API_BASE_URL } from '@/lib/constants'
+// import { API_BASE_URL } from '@/lib/constants'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 import { clearApplicationState, isTokenValid, getUserIdFromToken } from '@/lib/stateManager'
 import { setCurrentUser, checkAndClearState, registerStateListener, forceClearAllData, forceClearAllDataWithReload, softCheckAndClearState } from '@/lib/userStateManager'
 
@@ -36,6 +37,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Функция для обновления токена через refresh token
+  const refreshToken = async () => {
+    try {
+      console.log('Attempting to refresh token with URL:', `${API_BASE_URL}/api/auth/refresh`)
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // Важно для отправки cookies
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        console.log('Refresh token response not ok:', response.status, response.statusText)
+        return false
+      }
+
+      const data = await response.json()
+      
+      if (data.success && data.data?.token) {
+        const newToken = data.data.token
+        localStorage.setItem('token', newToken)
+        setToken(newToken)
+        
+        // Получаем данные пользователя
+        const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${newToken}`
+          }
+        })
+        
+        const userData = await userResponse.json()
+        if (userData.success && userData.data) {
+          setUser(userData.data)
+          const userId = getUserIdFromToken(newToken)
+          if (userId) {
+            setCurrentUser(userId)
+          }
+        }
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Ошибка обновления токена:', error)
+      return false
+    }
+  }
+
+  // Функция для автоматического входа
+  const autoLogin = async () => {
+    try {
+      // Добавляем небольшую задержку для стабилизации сервера
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const success = await refreshToken()
+      if (!success) {
+        // Если автоматический вход не удался, очищаем состояние
+        clearApplicationState()
+        setToken(null)
+        setUser(null)
+      }
+    } catch (error) {
+      console.error('Ошибка автоматического входа:', error)
+      clearApplicationState()
+      setToken(null)
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     // Проверяем токен в localStorage при загрузке
     const savedToken = localStorage.getItem('token')
@@ -59,33 +132,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .then(res => res.json())
-      .then(data => {
+      .then(async (data) => {
         if (data.success && data.data) {
           setUser(data.data)
         } else {
-          // Токен недействителен, очищаем все состояние
+          // Токен недействителен, пробуем обновить через refresh token
+          const success = await refreshToken()
+          if (!success) {
+            clearApplicationState()
+            setToken(null)
+            setUser(null)
+          }
+        }
+      })
+      .catch(async () => {
+        // Ошибка сети, пробуем обновить через refresh token
+        const success = await refreshToken()
+        if (!success) {
           clearApplicationState()
           setToken(null)
           setUser(null)
         }
       })
-      .catch(() => {
-        // Ошибка сети, очищаем все состояние
-        clearApplicationState()
-        setToken(null)
-        setUser(null)
-      })
       .finally(() => {
         setIsLoading(false)
       })
     } else {
-      // Нет токена или токен недействителен
-      if (savedToken) {
-        clearApplicationState()
-      }
-      setToken(null)
-      setUser(null)
-      setIsLoading(false)
+      // Нет токена или токен недействителен, пробуем автоматический вход
+      autoLogin()
     }
 
     // Регистрируем слушатель для очистки состояния
@@ -110,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: 'POST',
+      credentials: 'include', // Важно для получения cookies
       headers: {
         'Content-Type': 'application/json',
       },
@@ -181,9 +256,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const logout = () => {
-    // Принудительная очистка всех данных с перезагрузкой
-    forceClearAllDataWithReload()
+  const logout = async () => {
+    try {
+      // Отправляем запрос на сервер для очистки cookies
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+    } catch (error) {
+      console.error('Ошибка при выходе:', error)
+    } finally {
+      // Принудительная очистка всех данных с перезагрузкой
+      forceClearAllDataWithReload()
+    }
   }
 
   const value = {

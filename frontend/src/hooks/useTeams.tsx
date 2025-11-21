@@ -73,9 +73,12 @@ export const useTeams = () => {
     try {
       const token = getToken();
       if (!token) {
+        console.warn('Токен не найден, очищаем состояние');
         clearState(); // Очищаем состояние если нет токена
         return; // Просто возвращаемся, не выбрасываем ошибку
       }
+
+      console.log('Загружаем команды с токеном:', token.substring(0, 20) + '...');
 
       const response = await fetch(`${API_BASE_URL}/api/teams`, {
         headers: {
@@ -85,7 +88,9 @@ export const useTeams = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка загрузки команд');
+        const errorText = await response.text();
+        console.error('Ошибка загрузки команд:', response.status, errorText);
+        throw new Error(`Ошибка загрузки команд: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
@@ -122,7 +127,16 @@ export const useTeams = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          const errorText = await response.text();
+          console.error('Ошибка создания команды:', response.status, errorText);
+          throw new Error(`Ошибка создания команды: ${response.status} ${errorText}`);
+        }
+        
+        console.error('Ошибка создания команды:', response.status, errorData);
         
         // Если есть детали ошибок валидации, показываем их
         if (errorData.errors && typeof errorData.errors === 'object') {

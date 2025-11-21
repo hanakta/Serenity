@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useTeams } from '@/hooks/useTeams';
@@ -34,10 +34,16 @@ import {
   Trash2,
   CheckSquare,
   UserPlus,
-  Mail
+  Mail,
+  Plus
 } from 'lucide-react';
 import { InviteTeamMemberModal } from '@/components/InviteTeamMemberModal';
 import { TeamInvitations } from '@/components/TeamInvitations';
+import TeamTaskModal from '@/components/TeamTaskModal';
+import TeamNotifications from '@/components/TeamNotifications';
+import AddActivityModal from '@/components/AddActivityModal';
+import { InvitationsList } from '@/components/InvitationsList';
+import { useManualActivity } from '@/hooks/useManualActivity';
 
 interface CollaborationActivity {
   id: string;
@@ -84,17 +90,21 @@ export default function CollaborationPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const { teams } = useTeams();
-  const { messages, files, unreadCount, getChatMessages, sendMessage, uploadFile, downloadFile } = useTeamChat();
-  const { activities, notifications, getTeamActivity, getTeamNotifications } = useTeamActivity();
+  const { messages, files, unreadCount, getChatMessages, sendMessage, uploadFile, downloadFile, getTeamFiles, startPolling, formatMessageTime, getAvatarUrl } = useTeamChat();
+  const { activities, notifications, getTeamActivity, getTeamNotifications, error: activityError, demoMode } = useTeamActivity();
   const { teamTasks, teamProjects, getTeamTasks, getTeamProjects, createTeamTask } = useTeamTasks();
+  const { createManualActivity, loading: manualActivityLoading } = useManualActivity();
   
-  const [activeTab, setActiveTab] = useState<'activity' | 'comments' | 'files' | 'tasks' | 'invitations' | 'settings'>('activity');
+  const [activeTab, setActiveTab] = useState<'activity' | 'comments' | 'files' | 'tasks' | 'invitations' | 'notifications' | 'settings'>('activity');
   const [selectedTeam, setSelectedTeam] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showAddActivityModal, setShowAddActivityModal] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Settings state
   const [settings, setSettings] = useState({
@@ -131,6 +141,15 @@ export default function CollaborationPage() {
     }
   }, [user, isLoading, router]);
 
+  // Проверяем токен при загрузке страницы (мягкая проверка)
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token && !isLoading) {
+      // Только если пользователь не загружается, показываем ошибку
+      console.warn('Токен не найден, но пользователь может быть в процессе загрузки');
+    }
+  }, [isLoading]);
+
   useEffect(() => {
     if (teams.length > 0 && !selectedTeam) {
       setSelectedTeam(teams[0]);
@@ -146,18 +165,22 @@ export default function CollaborationPage() {
         await getTeamActivity(selectedTeam.id);
       } else if (activeTab === 'comments') {
         await getChatMessages(selectedTeam.id);
+        // Запускаем автоматическое обновление для чата
+        startPolling(selectedTeam.id, 3000);
       } else if (activeTab === 'files') {
-        // await getTeamFiles(selectedTeam.id); // Временно отключено
+        await getTeamFiles(selectedTeam.id);
       } else if (activeTab === 'tasks') {
         await getTeamTasks(selectedTeam.id);
         await getTeamProjects(selectedTeam.id);
+      } else if (activeTab === 'notifications') {
+        await getTeamNotifications(selectedTeam.id);
       }
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
     } finally {
       setLoading(false);
     }
-  }, [selectedTeam, activeTab]);
+  }, [selectedTeam, activeTab, getTeamActivity, getChatMessages, getTeamFiles, getTeamTasks, getTeamProjects, getTeamNotifications, startPolling]);
 
   useEffect(() => {
     if (selectedTeam) {
@@ -168,18 +191,34 @@ export default function CollaborationPage() {
     }
   }, [selectedTeam, activeTab]);
 
+  // Автоматический скролл к последнему сообщению
+  useEffect(() => {
+    if (activeTab === 'comments' && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, activeTab]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTeam) return;
 
     try {
-      await sendMessage(selectedTeam.id, newMessage);
-      setNewMessage('');
+      // Простая отправка сообщения без возврата значения
+      sendMessage(selectedTeam.id, newMessage).then(() => {
+        setNewMessage('');
+      }).catch((error) => {
+        console.error('Ошибка отправки сообщения:', error);
+      });
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);
     }
   };
 
-  const formatActivityType = (type: string) => {
+  const formatActivityType = (type: string, activityData?: any) => {
+    // Если это ручная активность (comment_added с created_manually), показываем специальный текст
+    if (type === 'comment_added' && activityData?.created_manually) {
+      return 'Добавил активность';
+    }
+    
     const types: { [key: string]: string } = {
       'task_created': 'Создал задачу',
       'task_updated': 'Обновил задачу',
@@ -194,14 +233,72 @@ export default function CollaborationPage() {
   };
 
   const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    try {
+      // Убеждаемся, что дата правильно парсится
+      const date = new Date(dateString);
+      const now = new Date();
+      
+      // Проверяем, что дата валидна
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date:', dateString);
+        return 'недавно';
+      }
+      
+      const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (diffInSeconds < 60) return 'только что';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} мин назад`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ч назад`;
-    return `${Math.floor(diffInSeconds / 86400)} дн назад`;
+      if (diffInSeconds < 60) return 'только что';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} мин назад`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ч назад`;
+      return `${Math.floor(diffInSeconds / 86400)} дн назад`;
+    } catch (error) {
+      console.error('Error formatting time:', error, dateString);
+      return 'недавно';
+    }
+  };
+
+  const handleCreateManualActivity = async (data: { title: string; description: string; category: string }) => {
+    if (!selectedTeam) return;
+    
+    try {
+      await createManualActivity(selectedTeam.id, data);
+      setShowAddActivityModal(false);
+      await loadTeamData();
+    } catch (error) {
+      console.error('Ошибка создания активности:', error);
+    }
+  };
+
+  // Группировка сообщений по времени
+  const groupMessagesByTime = (messages: any[]) => {
+    const groups: { [key: string]: any[] } = {};
+    
+    messages.forEach(message => {
+      const date = new Date(message.created_at);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let groupKey: string;
+      
+      if (date.toDateString() === today.toDateString()) {
+        groupKey = 'Сегодня';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        groupKey = 'Вчера';
+      } else {
+        groupKey = date.toLocaleDateString('ru-RU', { 
+          day: 'numeric', 
+          month: 'long',
+          year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(message);
+    });
+    
+    return groups;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -220,8 +317,12 @@ export default function CollaborationPage() {
   };
 
   const filteredActivities = activities.filter(activity => {
-    const matchesSearch = activity.activity_data?.task_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         activity.user_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchText = searchQuery.toLowerCase();
+    const matchesSearch = 
+      (activity.activity_data?.task_title as string)?.toLowerCase().includes(searchText) ||
+      (activity.activity_data?.title as string)?.toLowerCase().includes(searchText) ||
+      (activity.activity_data?.description as string)?.toLowerCase().includes(searchText) ||
+      (activity.user_name || 'Неизвестный пользователь').toLowerCase().includes(searchText);
     const matchesFilter = filterType === 'all' || activity.activity_type === filterType;
     return matchesSearch && matchesFilter;
   });
@@ -247,12 +348,79 @@ export default function CollaborationPage() {
     );
   }
 
+  // Показываем ошибку аутентификации, если есть проблемы с токеном
+  if (!user && !isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="bg-red-500/20 border border-red-500/30 rounded-2xl p-6 mb-6">
+            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Ошибка аутентификации</h2>
+            <p className="text-gray-300 mb-4">
+              Для доступа к коллаборации необходимо войти в систему.
+            </p>
+            <button
+              onClick={() => router.push('/login')}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105"
+            >
+              Войти в систему
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return null;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      {/* Индикатор демо режима */}
+      {demoMode && (
+        <div className="container mx-auto px-4 py-4">
+          <div className="bg-blue-500/20 border border-blue-500/30 rounded-xl p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-blue-300">Демо режим: отображаются примеры данных</span>
+              <button
+                onClick={() => router.push('/login')}
+                className="ml-auto bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-1 rounded-lg text-sm transition-colors"
+              >
+                Войти для полного доступа
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Отображение ошибок аутентификации */}
+      {activityError && !demoMode && (
+        <div className="container mx-auto px-4 py-4">
+          <div className="bg-red-500/20 border border-red-500/30 rounded-xl p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="text-red-300">{activityError}</span>
+              <button
+                onClick={() => router.push('/login')}
+                className="ml-auto bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1 rounded-lg text-sm transition-colors"
+              >
+                Войти
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-lg border-b border-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -275,7 +443,7 @@ export default function CollaborationPage() {
             </div>
 
             {/* Team Selector */}
-            {teams.length > 1 && (
+            {teams.length > 1 ? (
               <div className="flex items-center space-x-2">
                 <Users className="w-4 h-4 text-white/70" />
                 <select
@@ -295,7 +463,7 @@ export default function CollaborationPage() {
                   ))}
                 </select>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -309,6 +477,7 @@ export default function CollaborationPage() {
             { id: 'tasks', label: 'Задачи', icon: CheckSquare },
             { id: 'invitations', label: 'Приглашения', icon: UserPlus },
             { id: 'files', label: 'Файлы', icon: Archive },
+            { id: 'notifications', label: 'Уведомления', icon: Bell },
             { id: 'settings', label: 'Настройки', icon: Settings }
           ].map(({ id, label, icon: Icon }) => (
             <motion.button
@@ -340,6 +509,20 @@ export default function CollaborationPage() {
           >
             {activeTab === 'activity' && (
               <div className="p-6">
+                {/* Header with Add Button */}
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-white">Активность команды</h2>
+                  <motion.button
+                    onClick={() => setShowAddActivityModal(true)}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Добавить активность</span>
+                  </motion.button>
+                </div>
+
                 {/* Filters */}
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
                   <div className="relative flex-1">
@@ -363,6 +546,7 @@ export default function CollaborationPage() {
                     <option value="task_completed" className="bg-slate-800">Завершение задач</option>
                     <option value="comment_added" className="bg-slate-800">Комментарии</option>
                     <option value="file_uploaded" className="bg-slate-800">Файлы</option>
+                    <option value="manual_activity" className="bg-slate-800">Ручные активности</option>
                   </select>
                 </div>
 
@@ -398,16 +582,30 @@ export default function CollaborationPage() {
                       >
                         <div className="flex items-start space-x-4">
                           <motion.div 
-                            className="w-12 h-12 bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-white text-lg font-bold shadow-lg group-hover:shadow-blue-500/25 transition-shadow duration-300"
+                            className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold shadow-lg group-hover:shadow-blue-500/25 transition-shadow duration-300 overflow-hidden"
                             whileHover={{ rotate: 5, scale: 1.1 }}
                             transition={{ duration: 0.2 }}
                           >
-                            {activity.user_name.charAt(0)}
+                            <img
+                              src={`http://localhost:8000/api/users/${activity.user_id}/avatar`}
+                              alt={activity.user_name || 'Пользователь'}
+                              className="w-full h-full object-cover rounded-xl"
+                              onError={(e) => {
+                                // Fallback to initials if image fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  parent.className = parent.className.replace('overflow-hidden', '') + ' bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500';
+                                  parent.textContent = (activity.user_name || 'Н').charAt(0);
+                                }
+                              }}
+                            />
                           </motion.div>
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-col space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="font-semibold text-white text-base truncate">{activity.user_name}</span>
+                                <span className="font-semibold text-white text-base truncate">{activity.user_name || 'Неизвестный пользователь'}</span>
                                 <motion.span 
                                   className="px-2 py-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-full text-xs text-blue-300 font-medium"
                                   whileHover={{ scale: 1.05 }}
@@ -416,9 +614,10 @@ export default function CollaborationPage() {
                                 </motion.span>
                               </div>
                               <div className="bg-white/10 rounded-lg px-3 py-2 border border-white/10">
-                                <span className="text-white/80 text-sm font-medium">{formatActivityType(activity.activity_type)}</span>
+                                <span className="text-white/80 text-sm font-medium">{formatActivityType(activity.activity_type, activity.activity_data)}</span>
                               </div>
-                              {activity.activity_data?.task_title && (
+                              {/* Display task title for task activities */}
+                              {(activity.activity_data as any)?.task_title && activity.activity_type !== 'manual_activity' && (
                                 <motion.div 
                                   className="bg-gradient-to-r from-white/5 to-white/10 rounded-lg p-3 border border-white/10"
                                   initial={{ opacity: 0 }}
@@ -426,8 +625,33 @@ export default function CollaborationPage() {
                                   transition={{ delay: 0.2 }}
                                 >
                                   <p className="text-white/90 text-sm font-medium truncate">
-                                    &ldquo;{activity.activity_data.task_title}&rdquo;
+                                    &ldquo;{(activity.activity_data as any).task_title}&rdquo;
                                   </p>
+                                </motion.div>
+                              )}
+                              {/* Display manual activity content */}
+                              {activity.activity_type === 'comment_added' && (activity.activity_data as any)?.title && (activity.activity_data as any)?.created_manually && (
+                                <motion.div 
+                                  className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg p-3 border border-purple-500/20"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.2 }}
+                                >
+                                  <p className="text-white/90 text-sm font-medium mb-2">
+                                    {(activity.activity_data as any).title}
+                                  </p>
+                                  {(activity.activity_data as any).description && (
+                                    <p className="text-white/70 text-xs leading-relaxed">
+                                      {(activity.activity_data as any).description}
+                                    </p>
+                                  )}
+                                  {(activity.activity_data as any).category && (
+                                    <div className="mt-2">
+                                      <span className="inline-flex items-center px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">
+                                        {(activity.activity_data as any).category}
+                                      </span>
+                                    </div>
+                                  )}
                                 </motion.div>
                               )}
                             </div>
@@ -454,21 +678,21 @@ export default function CollaborationPage() {
             )}
 
             {activeTab === 'comments' && (
-              <div className="flex flex-col h-[600px]">
+              <div className="flex flex-col h-[calc(100vh-200px)] min-h-[600px]">
                 {/* Chat Header */}
-                <div className="p-4 border-b border-white/10">
+                <div className="p-4 border-b border-white/10 bg-slate-800/50 backdrop-blur-xl">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-white">Чат команды</h3>
-                    {unreadCount > 0 && (
-                      <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
+                    {unreadCount > 0 ? (
+                      <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">
                         {unreadCount} непрочитанных
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-slate-800/30 to-slate-900/30">
                   {loading ? (
                     <div className="text-center py-8">
                       <motion.div
@@ -479,78 +703,150 @@ export default function CollaborationPage() {
                       <p className="text-white/70">Загрузка сообщений...</p>
                     </div>
                   ) : messages.length > 0 ? (
-                    messages.map((message, index) => (
-                      <motion.div
-                        key={message.id}
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{ 
-                          duration: 0.3, 
-                          delay: index * 0.05,
-                          ease: [0.25, 0.46, 0.45, 0.94]
-                        }}
-                        className={`flex ${message.user_name === user?.name ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`max-w-[70%] ${message.user_name === user?.name ? 'order-2' : 'order-1'}`}>
-                          {message.user_name !== user?.name && (
-                            <motion.div 
-                              className="flex items-center space-x-2 mb-2"
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: 0.1 }}
-                            >
-                              <motion.div 
-                                className="w-7 h-7 bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-semibold shadow-lg"
-                                whileHover={{ scale: 1.1, rotate: 5 }}
-                                transition={{ duration: 0.2 }}
-                              >
-                                {message.user_name.charAt(0)}
-                              </motion.div>
-                              <span className="text-white/70 text-sm font-medium">{message.user_name}</span>
-                            </motion.div>
-                          )}
-                          <motion.div
-                            className={`p-4 rounded-2xl shadow-lg ${
-                              message.user_name === user?.name
-                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
-                                : 'bg-white/10 backdrop-blur-sm text-white border border-white/20'
-                            }`}
-                            whileHover={{ scale: 1.02 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            {message.reply_to_id && message.reply_message && (
-                              <motion.div 
-                                className="mb-3 p-3 bg-white/10 rounded-lg text-sm border-l-4 border-white/30"
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0.15 }}
-                              >
-                                <div className="text-white/70 text-xs font-medium">{message.reply_user_name}</div>
-                                <div className="text-white/80 truncate">{message.reply_message}</div>
-                              </motion.div>
-                            )}
-                            <p className="text-sm leading-relaxed">{message.message}</p>
-                            {message.is_edited && (
-                              <motion.p 
-                                className="text-xs opacity-70 mt-2 italic"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 0.7 }}
-                                transition={{ delay: 0.2 }}
-                              >
-                                (изменено)
-                              </motion.p>
-                            )}
-                          </motion.div>
-                          <motion.div 
-                            className="text-white/50 text-xs mt-2 px-1"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.25 }}
-                          >
-                            {formatTimeAgo(message.created_at)}
-                          </motion.div>
+                    Object.entries(groupMessagesByTime(messages)).map(([dateGroup, groupMessages]) => (
+                      <div key={dateGroup}>
+                        {/* Заголовок даты */}
+                        <div className="flex items-center justify-center my-4">
+                          <div className="bg-white/10 text-white/60 text-xs px-3 py-1 rounded-full">
+                            {dateGroup}
+                          </div>
                         </div>
-                      </motion.div>
+                        
+                        {/* Сообщения группы */}
+                        <div className="space-y-2">
+                          {groupMessages.map((message, index) => {
+                            const isOwnMessage = message.user_name === user?.name;
+                            
+                            // Проверяем, нужно ли показать аватар
+                            const prevMessage = index > 0 ? groupMessages[index - 1] : null;
+                            const showAvatar = !isOwnMessage && (
+                              !prevMessage || 
+                              prevMessage.user_name !== message.user_name ||
+                              new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() > 5 * 60 * 1000 // 5 минут
+                            );
+                            
+                            // Проверяем, нужно ли показать имя пользователя
+                            const showUserName = !isOwnMessage && showAvatar;
+                            
+                            return (
+                              <motion.div
+                                key={message.id}
+                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ 
+                                  duration: 0.3, 
+                                  delay: index * 0.05,
+                                  ease: [0.25, 0.46, 0.45, 0.94]
+                                }}
+                                className="flex flex-col"
+                              >
+                                {/* Имя пользователя */}
+                                {showUserName ? (
+                                  <div className="flex items-center mb-1 px-2">
+                                    <div className="w-5 h-5 bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-semibold mr-2">
+                                      {(message.user_name || 'Н').charAt(0)}
+                                    </div>
+                                    <span className="text-xs font-medium text-white/70">
+                                      {message.user_name}
+                                    </span>
+                                  </div>
+                                ) : null}
+                                
+                                {/* Сообщение */}
+                                <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-1`}>
+                                  <div className={`flex items-end max-w-sm lg:max-w-lg ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                                    {/* Аватар и имя пользователя */}
+                                    {showAvatar ? (
+                                      <div className={`flex-shrink-0 ${isOwnMessage ? 'ml-2' : 'mr-2'}`}>
+                                        <div className="flex flex-col items-center">
+                                          <img
+                                            src={getAvatarUrl(message.user_avatar, message.user_name, message.user_id)}
+                                            alt={message.user_name || 'Пользователь'}
+                                            className="w-10 h-10 rounded-full object-cover border-2 border-white/20"
+                                            onError={(e) => {
+                                              // Fallback to initials if image fails to load
+                                              const target = e.target as HTMLImageElement;
+                                              target.style.display = 'none';
+                                              const parent = target.parentElement;
+                                              if (parent) {
+                                                const userName = message.user_name || 'Н';
+                                                const initials = typeof userName === 'string' 
+                                                  ? userName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+                                                  : '??';
+                                                parent.innerHTML = `<div class="w-10 h-10 bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-semibold border-2 border-white/20">${initials}</div>`;
+                                              }
+                                            }}
+                                          />
+                                          {!isOwnMessage ? (
+                                            <span className="text-xs text-white/70 mt-1 max-w-[60px] truncate">
+                                              {message.user_name || 'Пользователь'}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    
+                                    {/* Пустое место для выравнивания, если аватар не показывается */}
+                                    {!showAvatar && !isOwnMessage ? (
+                                      <div className="w-10 flex-shrink-0"></div>
+                                    ) : null}
+                                    
+                                    {/* Контент сообщения */}
+                                    <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                                      <motion.div
+                                        className={`px-4 py-3 rounded-2xl max-w-full ${
+                                          isOwnMessage
+                                            ? 'bg-blue-500 text-white rounded-br-md'
+                                            : 'bg-white/10 backdrop-blur-sm text-white border border-white/20 rounded-bl-md'
+                                        }`}
+                                        whileHover={{ scale: 1.02 }}
+                                        transition={{ duration: 0.2 }}
+                                      >
+                                        {message.reply_to_id && message.reply_message ? (
+                                          <div className={`text-xs mb-2 p-2 rounded-lg ${
+                                            isOwnMessage ? 'bg-blue-600' : 'bg-white/10'
+                                          }`}>
+                                            <div className="font-medium">
+                                              {message.reply_user_name}
+                                            </div>
+                                            <div className="truncate">
+                                              {message.reply_message}
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                        
+                                        <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
+                                          {message.message}
+                                        </div>
+                                        
+                                        {message.is_edited ? (
+                                          <div className="text-xs opacity-75 mt-1">
+                                            (изменено)
+                                          </div>
+                                        ) : null}
+                                      </motion.div>
+                                      
+                                      {/* Время и статус */}
+                                      <div className={`flex items-center mt-1 space-x-1 ${
+                                        isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''
+                                      }`}>
+                                        <span className="text-xs text-white/50">
+                                          {formatMessageTime(message.created_at)}
+                                        </span>
+                                        {isOwnMessage && (
+                                          <span className="text-xs text-white/40">
+                                            {message.user_name || 'Вы'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     ))
                   ) : (
                     <div className="text-center py-12">
@@ -561,28 +857,55 @@ export default function CollaborationPage() {
                       </p>
                     </div>
                   )}
+                  {/* Элемент для автоматического скролла */}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Message Input */}
-                <div className="p-4 border-t border-white/10">
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      placeholder="Напишите сообщение..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <motion.button
+                <div className="p-4 border-t border-white/10 bg-slate-800/50 backdrop-blur-xl">
+                  <div className="flex items-end space-x-3">
+                    <div className="flex-1">
+                      <div className="relative">
+                        <textarea
+                          placeholder="Напишите сообщение..."
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage();
+                            }
+                          }}
+                          className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none min-h-[48px] max-h-32"
+                          rows={1}
+                          style={{
+                            height: 'auto',
+                            minHeight: '48px'
+                          }}
+                          onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = 'auto';
+                            target.style.height = Math.min(target.scrollHeight, 128) + 'px';
+                          }}
+                        />
+                        {/* Кнопка эмодзи */}
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <button
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim()}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-blue-500/25"
                     >
-                      <Send className="w-4 h-4" />
-                    </motion.button>
+                      <Send className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -592,15 +915,31 @@ export default function CollaborationPage() {
               <div className="p-6">
                 {/* File Upload Button */}
                 <div className="mb-6">
-                  <motion.button
-                    disabled
-                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  <motion.label
+                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-200 cursor-pointer"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     <Upload className="w-4 h-4" />
                     <span>Загрузить файл</span>
-                  </motion.button>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file && selectedTeam) {
+                          try {
+                            await uploadFile(selectedTeam.id, file);
+                            // Обновляем список файлов
+                            await getTeamFiles(selectedTeam.id);
+                          } catch (error) {
+                            console.error('Ошибка загрузки файла:', error);
+                          }
+                        }
+                      }}
+                      accept="*/*"
+                    />
+                  </motion.label>
                 </div>
 
                 {/* Files List */}
@@ -656,11 +995,12 @@ export default function CollaborationPage() {
                           <div className="flex items-center justify-between pt-2 border-t border-white/10">
                             <div className="flex items-center space-x-2">
                               <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                                {file.user_name.charAt(0)}
+                                {(file.user_name || 'Н').charAt(0)}
                               </div>
-                              <span className="text-white/70 text-sm">Загружен {file.user_name}</span>
+                              <span className="text-white/70 text-sm">Загружен {file.user_name || 'Неизвестный пользователь'}</span>
                             </div>
                             <motion.button 
+                              onClick={() => downloadFile(file.id, selectedTeam.id)}
                               className="p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200 group-hover:bg-blue-500/20"
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
@@ -693,6 +1033,7 @@ export default function CollaborationPage() {
                     <p className="text-white/70">Управление задачами команды</p>
                   </div>
                   <motion.button
+                    onClick={() => setShowTaskModal(true)}
                     className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-200"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -769,29 +1110,66 @@ export default function CollaborationPage() {
               </div>
             )}
 
-            {activeTab === 'invitations' && selectedTeam && (
+            {activeTab === 'invitations' && (
               <div className="p-6">
-                {/* Invitations Header */}
+                {/* Header with Invite Button */}
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Управление приглашениями</h3>
-                    <p className="text-white/70">Приглашайте новых участников в команду</p>
+                    <h2 className="text-2xl font-bold text-white mb-2">Приглашения</h2>
+                    <p className="text-white/70">
+                      Просматривайте входящие приглашения и приглашайте новых участников
+                    </p>
                   </div>
-                  <motion.button
-                    onClick={() => setShowInviteModal(true)}
-                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-200"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Mail className="w-4 h-4" />
-                    <span>Пригласить участника</span>
-                  </motion.button>
+                  {selectedTeam && (
+                    <motion.button
+                      onClick={() => setShowInviteModal(true)}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-200"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Mail className="w-4 h-4" />
+                      <span>Пригласить участника</span>
+                    </motion.button>
+                  )}
                 </div>
 
-                {/* Team Invitations Component */}
-                <TeamInvitations 
+                {/* Incoming Invitations */}
+                <div className="mb-8">
+                  <h3 className="text-lg font-semibold text-white mb-4">Входящие приглашения</h3>
+                  <InvitationsList />
+                </div>
+
+                {/* Team Invitations Management */}
+                {selectedTeam && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-4">Управление приглашениями команды</h3>
+                    <TeamInvitations 
+                      teamId={selectedTeam.id}
+                      teamName={selectedTeam.name}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'notifications' && selectedTeam && (
+              <div className="p-6">
+                <TeamNotifications
                   teamId={selectedTeam.id}
-                  teamName={selectedTeam.name}
+                  notifications={notifications}
+                  loading={loading}
+                  onMarkAsRead={async (notificationId) => {
+                    // Здесь будет вызов API для отметки уведомления как прочитанного
+                    console.log('Mark as read:', notificationId);
+                  }}
+                  onMarkAllAsRead={async () => {
+                    // Здесь будет вызов API для отметки всех уведомлений как прочитанных
+                    console.log('Mark all as read');
+                  }}
+                  onDelete={async (notificationId) => {
+                    // Здесь будет вызов API для удаления уведомления
+                    console.log('Delete notification:', notificationId);
+                  }}
                 />
               </div>
             )}
@@ -939,6 +1317,32 @@ export default function CollaborationPage() {
               // The TeamInvitations component will refresh automatically
             }
           }}
+        />
+      )}
+
+      {/* Team Task Modal */}
+      {selectedTeam && (
+        <TeamTaskModal
+          isOpen={showTaskModal}
+          onClose={() => setShowTaskModal(false)}
+          teamId={selectedTeam.id}
+          teamName={selectedTeam.name}
+          onCreateTask={async (taskData) => {
+            await createTeamTask(selectedTeam.id, taskData);
+            // Обновляем список задач
+            await getTeamTasks(selectedTeam.id);
+          }}
+          projects={teamProjects}
+        />
+      )}
+
+      {/* Add Activity Modal */}
+      {selectedTeam && (
+        <AddActivityModal
+          isOpen={showAddActivityModal}
+          onClose={() => setShowAddActivityModal(false)}
+          onSubmit={handleCreateManualActivity}
+          loading={manualActivityLoading}
         />
       )}
     </div>

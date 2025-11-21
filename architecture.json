@@ -1,0 +1,293 @@
+{
+  "project": "Serenity",
+  "version": "1.0.0",
+  "description": "Modern task management system with team collaboration",
+  "architecture": {
+    "layers": [
+      {
+        "name": "Presentation Layer (Frontend)",
+        "type": "frontend",
+        "technologies": ["Next.js 15", "React 18", "TypeScript", "Tailwind CSS"],
+        "components": [
+          {
+            "name": "React Components",
+            "type": "ui",
+            "subcomponents": [
+              "Auth Components (Login, Register, Protected Routes)",
+              "Task Components (TaskList, TaskCard, TaskForm)",
+              "Team Components (TeamCard, TeamInvitations, TeamChat)",
+              "Admin Components (AdminDashboard, UserManagement, TaskManagement)",
+              "UI Components (Buttons, Modals, Notifications)"
+            ]
+          },
+          {
+            "name": "Custom Hooks",
+            "type": "logic",
+            "subcomponents": [
+              "useAuth (authentication, tokens)",
+              "useTasks (CRUD operations)",
+              "useInvitations (team invitations)",
+              "useTeamChat (team messaging)",
+              "usePomodoro (timer sessions)",
+              "useTeamActivity (team activity)",
+              "useManualActivity (manual activity)"
+            ]
+          },
+          {
+            "name": "Routing",
+            "type": "navigation",
+            "subcomponents": [
+              "Public Pages (/, /pricing, /login, /register)",
+              "Protected Pages (Dashboard, Teams, Tasks)",
+              "Admin Routes (/admin/*)",
+              "Focus Mode (/focus)",
+              "Analytics (/analytics)"
+            ]
+          },
+          {
+            "name": "Styling & UI",
+            "type": "styling",
+            "subcomponents": [
+              "Tailwind CSS (utility-first)",
+              "Framer Motion (animations)",
+              "Lucide Icons (icon library)",
+              "Dark Theme (theme system)"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Application Layer (Backend)",
+        "type": "backend",
+        "technologies": ["PHP 8.2", "Slim Framework 4", "MySQL/SQLite"],
+        "components": [
+          {
+            "name": "Middleware Pipeline",
+            "type": "middleware",
+            "subcomponents": [
+              "CorsMiddleware (CORS policy)",
+              "AuthMiddleware (JWT validation)",
+              "AdminMiddleware (admin access control)",
+              "SimpleAuthMiddleware (basic authentication)"
+            ]
+          },
+          {
+            "name": "API Controllers",
+            "type": "controllers",
+            "subcomponents": [
+              "AuthController (login, register, logout, refresh)",
+              "TaskController (CRUD tasks)",
+              "UserController (user profile, avatar)",
+              "TeamController (team management)",
+              "TeamInvitationController (invitations)",
+              "TeamChatController (chat system)",
+              "TeamFileController (file sharing)",
+              "AdminController (admin functions)",
+              "PomodoroController (timer sessions)",
+              "CookieConsentController (cookie consent)"
+            ]
+          },
+          {
+            "name": "Business Services",
+            "type": "services",
+            "subcomponents": [
+              "JWTService (token management)",
+              "ResponseService (JSON formatting)",
+              "ValidationService (data validation)",
+              "TeamNotificationService (notifications)",
+              "FileService (file operations)",
+              "TeamActivityService (activity tracking)"
+            ]
+          },
+          {
+            "name": "Models",
+            "type": "models",
+            "subcomponents": [
+              "User (system users)",
+              "Task (tasks & todos)",
+              "Team (team entities)",
+              "TeamInvitation (invitations)",
+              "TeamChatMessage (chat messages)",
+              "Project (projects)",
+              "PomodoroSession (timer sessions)",
+              "CookieConsent (cookie consent)"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Data Layer (Database)",
+        "type": "database",
+        "technologies": ["MySQL 8.0", "SQLite 3", "PDO"],
+        "components": [
+          {
+            "name": "Core Tables",
+            "type": "tables",
+            "subcomponents": [
+              "users (system users with roles)",
+              "tasks (tasks with priorities & categories)",
+              "teams (team entities with settings)",
+              "team_members (team membership with roles)",
+              "projects (projects with status)",
+              "team_invitations (invitations with tokens)"
+            ]
+          },
+          {
+            "name": "Communication Tables",
+            "type": "tables",
+            "subcomponents": [
+              "team_chat_messages (chat messages)",
+              "team_activity (team activity logs)",
+              "pomodoro_sessions (timer sessions)",
+              "cookie_consents (cookie consent records)"
+            ]
+          }
+        ]
+      }
+    ],
+    "api_endpoints": {
+      "authentication": [
+        "POST /api/auth/login",
+        "POST /api/auth/register",
+        "POST /api/auth/logout",
+        "POST /api/auth/refresh",
+        "GET /api/auth/me"
+      ],
+      "tasks": [
+        "GET /api/tasks",
+        "POST /api/tasks",
+        "GET /api/tasks/{id}",
+        "PUT /api/tasks/{id}",
+        "DELETE /api/tasks/{id}",
+        "GET /api/tasks/stats"
+      ],
+      "teams": [
+        "GET /api/teams",
+        "POST /api/teams",
+        "GET /api/teams/{id}",
+        "PUT /api/teams/{id}",
+        "DELETE /api/teams/{id}",
+        "POST /api/teams/{id}/join",
+        "POST /api/teams/{id}/leave"
+      ],
+      "invitations": [
+        "GET /api/invitations",
+        "POST /api/invitations/{token}/accept",
+        "POST /api/invitations/{token}/decline",
+        "POST /api/teams/{id}/invite",
+        "GET /api/teams/{id}/invitations"
+      ],
+      "admin": [
+        "GET /api/admin/stats",
+        "GET /api/admin/users",
+        "GET /api/admin/tasks",
+        "GET /api/admin/teams",
+        "GET /api/admin/projects",
+        "GET /api/admin/activities"
+      ],
+      "pomodoro": [
+        "POST /api/pomodoro/sessions",
+        "GET /api/pomodoro/sessions",
+        "PUT /api/pomodoro/sessions/{id}",
+        "GET /api/pomodoro/stats"
+      ]
+    },
+    "data_flow": [
+      "User → Browser",
+      "Browser → React Components",
+      "Components → Custom Hooks",
+      "Hooks → REST API Calls",
+      "API Calls → Middleware Pipeline",
+      "Middleware → Controllers",
+      "Controllers → Models + Services",
+      "Models → Database",
+      "Database → Models → Controllers",
+      "Controllers → JSON Response",
+      "Response → Hooks → State",
+      "State → Components → UI"
+    ],
+    "security": {
+      "authentication": "JWT Bearer tokens",
+      "authorization": "Role-based access control",
+      "middleware": ["AuthMiddleware", "AdminMiddleware"],
+      "password_hashing": "bcrypt",
+      "input_validation": "ValidationService"
+    },
+    "patterns": {
+      "architecture": ["MVC", "REST API", "Middleware Pipeline"],
+      "design": ["Singleton", "Repository", "Factory", "Observer"],
+      "frontend": ["Custom Hooks", "Context API", "Component Composition"],
+      "database": ["Active Record", "Data Mapper"]
+    }
+  },
+  "technologies": {
+    "frontend": {
+      "framework": "Next.js 15",
+      "library": "React 18",
+      "language": "TypeScript",
+      "styling": "Tailwind CSS",
+      "animations": "Framer Motion",
+      "icons": "Lucide Icons",
+      "state": "React Hooks + Context"
+    },
+    "backend": {
+      "language": "PHP 8.2",
+      "framework": "Slim Framework 4",
+      "database": "MySQL 8.0 / SQLite 3",
+      "auth": "JWT",
+      "validation": "Respect Validation",
+      "cors": "neomerx/cors-psr7"
+    },
+    "database": {
+      "engine": "MySQL/SQLite",
+      "orm": "Custom PDO Models",
+      "migrations": "Custom SQL scripts",
+      "seeding": "PHP seed scripts"
+    },
+    "devops": {
+      "version_control": "Git",
+      "package_manager": "npm + Composer",
+      "testing": "PHPUnit + Jest",
+      "linting": "ESLint",
+      "containerization": "Docker"
+    }
+  },
+  "deployment": {
+    "environments": ["development", "staging", "production"],
+    "web_server": "Nginx/Apache",
+    "php_fpm": "PHP-FPM",
+    "database": "MySQL/SQLite",
+    "cache": "Redis (optional)",
+    "cdn": "Cloudflare (optional)"
+  },
+  "performance": {
+    "frontend": [
+      "Next.js SSR/SSG",
+      "Code splitting",
+      "Image optimization",
+      "Lazy loading"
+    ],
+    "backend": [
+      "Slim Framework (lightweight)",
+      "Database indexing",
+      "Query optimization",
+      "Response caching"
+    ],
+    "database": [
+      "Proper indexing",
+      "Query optimization",
+      "Connection pooling",
+      "Read replicas (optional)"
+    ]
+  },
+  "monitoring": {
+    "error_tracking": "Custom error logging",
+    "performance": "Custom metrics",
+    "logs": "Monolog library",
+    "health_checks": "/health endpoint"
+  }
+}
+
+
+
+

@@ -35,5 +35,9 @@
     "typescript"
   ],
   "author": "Serenity Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "gsap": "^3.13.0",
+    "mathjs": "^14.8.1"
+  }
 }

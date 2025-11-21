@@ -73,7 +73,10 @@ const PublicTeamsSection: React.FC = () => {
   };
 
   // Получение инициалов владельца
-  const getOwnerInitials = (name: string) => {
+  const getOwnerInitials = (name: string | null | undefined) => {
+    if (!name || typeof name !== 'string') {
+      return '??';
+    }
     return name
       .split(' ')
       .map(word => word.charAt(0))
@@ -225,7 +228,7 @@ const PublicTeamsSection: React.FC = () => {
                   {team.owner_avatar ? (
                     <img
                       src={team.owner_avatar}
-                      alt={team.owner_name}
+                      alt={team.owner_name || 'Аватар владельца'}
                       className="w-8 h-8 rounded-full object-cover"
                     />
                   ) : (
@@ -236,7 +239,7 @@ const PublicTeamsSection: React.FC = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {team.owner_name}
+                    {team.owner_name || 'Неизвестный пользователь'}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {team.owner_email}
@@ -280,6 +283,14 @@ const PublicTeamsSection: React.FC = () => {
 };
 
 export default PublicTeamsSection;
+
+
+
+
+
+
+
+
 
 
 

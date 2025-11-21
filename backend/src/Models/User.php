@@ -20,14 +20,15 @@ class User
      */
     public function create(array $data): array
     {
-        $sql = "INSERT INTO users (id, email, name, password_hash, avatar, avatar_data, avatar_mime_type, avatar_size, settings) 
-                VALUES (:id, :email, :name, :password_hash, :avatar, :avatar_data, :avatar_mime_type, :avatar_size, :settings)";
+        $sql = "INSERT INTO users (id, email, name, password_hash, role, avatar, avatar_data, avatar_mime_type, avatar_size, settings) 
+                VALUES (:id, :email, :name, :password_hash, :role, :avatar, :avatar_data, :avatar_mime_type, :avatar_size, :settings)";
         
         $params = [
             'id' => uniqid('user_', true),
             'email' => $data['email'],
             'name' => $data['name'],
             'password_hash' => password_hash($data['password'], PASSWORD_DEFAULT),
+            'role' => $data['role'] ?? 'user',
             'avatar' => $data['avatar'] ?? null,
             'avatar_data' => $data['avatar_data'] ?? null,
             'avatar_mime_type' => $data['avatar_mime_type'] ?? null,
@@ -35,8 +36,14 @@ class User
             'settings' => json_encode($data['settings'] ?? [])
         ];
 
+        // Отладочная информация
+        error_log("User::create - SQL: " . $sql);
+        error_log("User::create - Params: " . json_encode($params));
+
         $this->db->execute($sql, $params);
         $userId = $params['id'];
+
+        error_log("User::create - Created user with ID: " . $userId);
 
         return $this->findById($userId);
     }
@@ -46,7 +53,7 @@ class User
      */
     public function findById(string $id): ?array
     {
-        $sql = "SELECT id, email, name, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, role, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE id = :id";
         
         return $this->db->queryOne($sql, ['id' => $id]);
@@ -57,7 +64,7 @@ class User
      */
     public function findByEmail(string $email): ?array
     {
-        $sql = "SELECT id, email, name, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, role, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE email = :email";
         
         return $this->db->queryOne($sql, ['email' => $email]);
@@ -68,7 +75,7 @@ class User
      */
     public function findByEmailWithPassword(string $email): ?array
     {
-        $sql = "SELECT id, email, name, password_hash, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, role, password_hash, avatar, avatar_data, avatar_mime_type, avatar_size, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE email = :email";
         
         return $this->db->queryOne($sql, ['email' => $email]);
@@ -127,15 +134,16 @@ class User
             $params['password_hash'] = $data['password_hash'];
         }
 
+        if (isset($data['role'])) {
+            $fields[] = 'role = :role';
+            $params['role'] = $data['role'];
+        }
+
         if (empty($fields)) {
             return $this->findById($id);
         }
 
-        // Определяем тип базы данных для правильного синтаксиса
-        $dbType = $this->db->getDatabaseType();
-        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
-        
-        $fields[] = "updated_at = {$nowFunction}";
+        $fields[] = "updated_at = NOW()";
         $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = :id";
 
         $this->db->execute($sql, $params);
@@ -269,15 +277,11 @@ class User
      */
     public function saveAvatar(string $userId, string $avatarData, string $mimeType, int $size): bool
     {
-        // Определяем тип базы данных для правильного синтаксиса
-        $dbType = $this->db->getDatabaseType();
-        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
-        
         $sql = "UPDATE users SET 
                     avatar_data = :avatar_data,
                     avatar_mime_type = :avatar_mime_type,
                     avatar_size = :avatar_size,
-                    updated_at = {$nowFunction}
+                    updated_at = NOW()
                 WHERE id = :id";
         
         $params = [
@@ -307,15 +311,11 @@ class User
      */
     public function deleteAvatar(string $userId): bool
     {
-        // Определяем тип базы данных для правильного синтаксиса
-        $dbType = $this->db->getDatabaseType();
-        $nowFunction = $dbType === 'sqlite' ? "datetime('now')" : "NOW()";
-        
         $sql = "UPDATE users SET 
                     avatar_data = NULL,
                     avatar_mime_type = NULL,
                     avatar_size = NULL,
-                    updated_at = {$nowFunction}
+                    updated_at = NOW()
                 WHERE id = :id";
         
         $affected = $this->db->execute($sql, ['id' => $userId]);
@@ -327,9 +327,55 @@ class User
      */
     public function findByIdWithoutAvatar(string $id): ?array
     {
-        $sql = "SELECT id, email, name, avatar, settings, email_verified_at, created_at, updated_at 
+        $sql = "SELECT id, email, name, role, avatar, settings, email_verified_at, created_at, updated_at 
                 FROM users WHERE id = :id";
         
         return $this->db->queryOne($sql, ['id' => $id]);
+    }
+
+    /**
+     * Проверить, является ли пользователь администратором
+     */
+    public function isAdmin(string $userId): bool
+    {
+        $user = $this->findById($userId);
+        return $user && in_array($user['role'], ['admin', 'super_admin']);
+    }
+
+    /**
+     * Проверить, является ли пользователь супер-администратором
+     */
+    public function isSuperAdmin(string $userId): bool
+    {
+        $user = $this->findById($userId);
+        return $user && $user['role'] === 'super_admin';
+    }
+
+    /**
+     * Получить всех администраторов
+     */
+    public function getAdmins(): array
+    {
+        $sql = "SELECT id, email, name, role, avatar, created_at, updated_at 
+                FROM users 
+                WHERE role IN ('admin', 'super_admin')
+                ORDER BY created_at DESC";
+        
+        return $this->db->query($sql);
+    }
+
+    /**
+     * Обновить роль пользователя
+     */
+    public function updateRole(string $userId, string $role): bool
+    {
+        $validRoles = ['user', 'admin', 'super_admin'];
+        if (!in_array($role, $validRoles)) {
+            return false;
+        }
+
+        $sql = "UPDATE users SET role = :role, updated_at = NOW() WHERE id = :id";
+        $affected = $this->db->execute($sql, ['id' => $userId, 'role' => $role]);
+        return $affected > 0;
     }
 }

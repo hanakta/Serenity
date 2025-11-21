@@ -8,6 +8,7 @@ use App\Models\TeamCollaboration;
 use App\Services\ResponseService;
 use App\Services\ValidationService;
 use App\Services\JWTService;
+use App\Services\TeamActivityService;
 
 class TeamChatController
 {
@@ -17,6 +18,7 @@ class TeamChatController
     private $responseService;
     private $validationService;
     private $jwtService;
+    private $activityService;
 
     public function __construct($database)
     {
@@ -26,6 +28,7 @@ class TeamChatController
         $this->responseService = new ResponseService();
         $this->validationService = new ValidationService();
         $this->jwtService = new JWTService();
+        $this->activityService = new TeamActivityService();
     }
 
     /**
@@ -101,16 +104,13 @@ class TeamChatController
             $message = $this->chatModel->create($messageData);
             
             if ($message) {
-                // Создаем активность
-                $this->collaborationModel->create([
-                    'team_id' => $teamId,
-                    'user_id' => $userId,
-                    'activity_type' => 'message_sent',
-                    'activity_data' => [
-                        'message_preview' => substr($data['message'], 0, 100),
-                        'message_type' => $data['message_type'] ?? 'text'
-                    ]
-                ]);
+                // Создаем активность через TeamActivityService
+                $this->activityService->createMessageSentActivity(
+                    $message['id'],
+                    $userId,
+                    $teamId,
+                    $data
+                );
 
                 return $this->responseService->success($message, 'Сообщение отправлено', 201);
             } else {

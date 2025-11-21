@@ -200,7 +200,7 @@ const AchievementStats = memo(function AchievementStats({
       >
         <h3 className="text-lg font-semibold text-white mb-4">Прогресс по категориям</h3>
         <div className="space-y-3">
-          {categories.slice(1).map((category) => {
+          {categories.slice(1).map((category, index) => {
             const stats = categoryStats[category.id as keyof typeof categoryStats]
             const progress = stats.total > 0 ? (stats.unlocked / stats.total) * 100 : 0
             const Icon = category.icon
@@ -239,6 +239,14 @@ const AchievementStats = memo(function AchievementStats({
 })
 
 export default AchievementStats
+
+
+
+
+
+
+
+
 
 
 

@@ -92,9 +92,17 @@ class Team
                   ORDER BY tm.joined_at DESC";
         
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([':user_id' => $userId]);
+            $stmt->bindParam(':user_id', $userId, PDO::PARAM_STR);
+            $result = $stmt->execute();
             
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!$result) {
+                $errorInfo = $stmt->errorInfo();
+                error_log("Team::getByUserId - SQL Error: " . implode(', ', $errorInfo));
+            }
+            
+            $teams = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            return $teams;
         } catch (Exception $e) {
             error_log("Ошибка получения команд пользователя: " . $e->getMessage());
             return [];

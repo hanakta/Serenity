@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Palette, Sun, Moon, Monitor, Smartphone, Laptop, Check, Sparkles, Eye, Settings2 } from 'lucide-react'
+import ColorThemeSelector from './settings/ColorThemeSelector'
 
 interface ThemeSettingsModalProps {
   isOpen: boolean
@@ -327,40 +328,17 @@ export default function ThemeSettingsModal({ isOpen, onClose, onSave }: ThemeSet
                 </div>
               </motion.div>
 
-              {/* Color Scheme */}
+              {/* Color Theme Selector */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 className="space-y-4"
               >
-                <div className="flex items-center space-x-3 mb-4">
-                  <Sparkles className="w-6 h-6 text-purple-400" />
-                  <h3 className="text-xl font-semibold text-white">Цветовая схема</h3>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {colorOptions.map((color) => (
-                    <motion.div
-                      key={color.name}
-                      className={`p-3 rounded-2xl border transition-all duration-300 cursor-pointer ${
-                        theme.primaryColor === color.name
-                          ? 'border-orange-500/50 bg-orange-500/10'
-                          : 'border-slate-600/30 bg-slate-700/30 hover:border-slate-500/50'
-                      }`}
-                      onClick={() => setTheme(prev => ({ ...prev, primaryColor: color.name }))}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <div className={`w-full h-12 rounded-xl bg-gradient-to-r ${color.gradient} mb-2 flex items-center justify-center`}>
-                        {theme.primaryColor === color.name && (
-                          <Check className="w-5 h-5 text-white" />
-                        )}
-                      </div>
-                      <p className="text-center text-sm text-slate-300">{color.label}</p>
-                    </motion.div>
-                  ))}
-                </div>
+                <ColorThemeSelector 
+                  currentTheme={theme.primaryColor}
+                  onThemeChange={(themeId) => setTheme(prev => ({ ...prev, primaryColor: themeId }))}
+                />
               </motion.div>
 
               {/* Font Size */}

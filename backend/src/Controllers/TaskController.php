@@ -7,16 +7,19 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Task;
 use App\Services\ValidationService;
+use App\Services\TeamActivityService;
 
 class TaskController
 {
     private Task $taskModel;
     private ValidationService $validator;
+    private TeamActivityService $activityService;
 
     public function __construct()
     {
         $this->taskModel = new Task();
         $this->validator = new ValidationService();
+        $this->activityService = new TeamActivityService();
     }
 
     /**
@@ -91,8 +94,35 @@ class TaskController
     public function create($request, $response)
     {
         $userId = $request->getAttribute('user_id');
-        $data = $request->getParsedBody();
+        
+        // Отладочная информация
+        error_log("TaskController::create - User ID from token: " . $userId);
+        
+        // Проверяем, что пользователь существует
+        $userModel = new \App\Models\User();
+        $user = $userModel->findById($userId);
+        if (!$user) {
+            error_log("TaskController::create - User not found with ID: " . $userId);
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Пользователь не найден'
+            ], 404);
+        }
+        
+        error_log("TaskController::create - User found: " . json_encode($user));
+        
+        // Попробуем получить данные из тела запроса
+        $body = $request->getBody()->getContents();
+        $data = json_decode($body, true);
+        
+        if (!$data) {
+            $data = $request->getParsedBody();
+        }
+        
         $data['user_id'] = $userId;
+        
+        // Отладочная информация
+        error_log("TaskController::create - Received data: " . json_encode($data));
 
         // Валидация данных
         $errors = $this->validator->validateTask($data);
@@ -110,6 +140,16 @@ class TaskController
 
         try {
             $task = $this->taskModel->create($data);
+
+            // Создаем активность для команды, если задача принадлежит команде
+            if (!empty($data['team_id'])) {
+                $this->activityService->createTaskCreatedActivity(
+                    $task['id'],
+                    $userId,
+                    $data['team_id'],
+                    $data
+                );
+            }
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -215,6 +255,17 @@ class TaskController
             }
 
             $task = $this->taskModel->update($taskId, $data);
+
+            // Создаем активность для команды, если задача принадлежит команде
+            if (!empty($existingTask['team_id'])) {
+                $this->activityService->createTaskUpdatedActivity(
+                    $taskId,
+                    $userId,
+                    $existingTask['team_id'],
+                    $existingTask,
+                    $task
+                );
+            }
 
             return $this->jsonResponse($response, [
                 'success' => true,

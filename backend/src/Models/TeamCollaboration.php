@@ -21,27 +21,38 @@ class TeamCollaboration
     public function create($data)
     {
         try {
-            $sql = "INSERT INTO {$this->table} (team_id, user_id, activity_type, activity_data, target_id, target_type, created_at) 
-                    VALUES (:team_id, :user_id, :activity_type, :activity_data, :target_id, :target_type, :created_at)";
+            $activityId = 'act_' . uniqid() . '_' . substr(bin2hex(random_bytes(4)), 0, 8);
+            
+            $sql = "INSERT INTO {$this->table} (id, team_id, user_id, activity_type, activity_data, target_id, target_type, created_at) 
+                    VALUES (:id, :team_id, :user_id, :activity_type, :activity_data, :target_id, :target_type, :created_at)";
             
             $stmt = $this->db->prepare($sql);
             $now = date('Y-m-d H:i:s');
             
+            $jsonData = json_encode($data['activity_data'], JSON_UNESCAPED_UNICODE);
+            error_log("TeamCollaboration::create - JSON data: " . $jsonData);
+            
             $result = $stmt->execute([
+                ':id' => $activityId,
                 ':team_id' => $data['team_id'],
                 ':user_id' => $data['user_id'],
                 ':activity_type' => $data['activity_type'],
-                ':activity_data' => json_encode($data['activity_data']),
+                ':activity_data' => $jsonData,
                 ':target_id' => $data['target_id'] ?? null,
                 ':target_type' => $data['target_type'] ?? null,
                 ':created_at' => $now
             ]);
 
+            error_log("TeamCollaboration::create - Execute result: " . ($result ? 'true' : 'false'));
+            
             if ($result) {
-                $activityId = $this->db->lastInsertId();
-                return $this->findById($activityId);
+                error_log("TeamCollaboration::create - About to call findById with ID: " . $activityId);
+                $found = $this->findById($activityId);
+                error_log("TeamCollaboration::create - findById result: " . ($found ? 'found' : 'not found'));
+                return $found;
             }
             
+            error_log("TeamCollaboration::create - Execute failed");
             return false;
         } catch (Exception $e) {
             error_log("Ошибка создания активности: " . $e->getMessage());
@@ -84,16 +95,12 @@ class TeamCollaboration
             $sql = "SELECT c.*, u.name as user_name, u.avatar as user_avatar
                     FROM {$this->table} c
                     INNER JOIN users u ON c.user_id = u.id
-                    WHERE c.team_id = :team_id
+                    WHERE c.team_id = ?
                     ORDER BY c.created_at DESC
-                    LIMIT :limit OFFSET :offset";
+                    LIMIT ? OFFSET ?";
             
             $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':team_id', $teamId, PDO::PARAM_INT);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            
+            $stmt->execute([$teamId, $limit, $offset]);
             $activities = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Декодируем JSON данные для каждой активности
@@ -377,5 +384,152 @@ class TeamCollaboration
             'target_id' => $commentData['id'] ?? null,
             'target_type' => 'comment'
         ]);
+    }
+
+    /**
+     * Получить уведомления команды
+     */
+    public function getTeamNotifications($teamId, $userId, $limit = 20, $offset = 0, $unreadOnly = false)
+    {
+        try {
+            $sql = "SELECT n.*, u.name as user_name, u.avatar as user_avatar
+                    FROM team_notifications n
+                    INNER JOIN users u ON n.user_id = u.id
+                    WHERE n.team_id = :team_id AND n.user_id = :user_id";
+            
+            if ($unreadOnly) {
+                $sql .= " AND n.is_read = 0";
+            }
+            
+            $sql .= " ORDER BY n.created_at DESC LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindValue(':team_id', $teamId, PDO::PARAM_STR);
+            $stmt->bindValue(':user_id', $userId, PDO::PARAM_STR);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Декодируем JSON данные для каждого уведомления
+            foreach ($notifications as &$notification) {
+                if ($notification['data']) {
+                    $notification['data'] = json_decode($notification['data'], true);
+                }
+            }
+            
+            return $notifications;
+        } catch (Exception $e) {
+            error_log("Ошибка получения уведомлений команды: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Отметить уведомление как прочитанное
+     */
+    public function markNotificationAsRead($notificationId, $userId)
+    {
+        try {
+            $sql = "UPDATE team_notifications 
+                    SET is_read = 1 
+                    WHERE id = :notification_id AND user_id = :user_id";
+            
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':notification_id' => $notificationId,
+                ':user_id' => $userId
+            ]);
+            
+            return $result ? $stmt->rowCount() : 0;
+        } catch (Exception $e) {
+            error_log("Ошибка отметки уведомления как прочитанного: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Отметить все уведомления команды как прочитанные
+     */
+    public function markAllNotificationsAsRead($teamId, $userId)
+    {
+        try {
+            $sql = "UPDATE team_notifications 
+                    SET is_read = 1 
+                    WHERE team_id = :team_id AND user_id = :user_id AND is_read = 0";
+            
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':team_id' => $teamId,
+                ':user_id' => $userId
+            ]);
+            
+            return $result ? $stmt->rowCount() : 0;
+        } catch (Exception $e) {
+            error_log("Ошибка отметки всех уведомлений как прочитанных: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Создать уведомление команды
+     */
+    public function createTeamNotification($teamId, $userId, $type, $title, $message, $data = null)
+    {
+        try {
+            $sql = "INSERT INTO team_notifications (id, team_id, user_id, type, title, message, data, is_read, created_at) 
+                    VALUES (:id, :team_id, :user_id, :type, :title, :message, :data, 0, :created_at)";
+            
+            $stmt = $this->db->prepare($sql);
+            $now = date('Y-m-d H:i:s');
+            $id = uniqid('notif_', true);
+            
+            $result = $stmt->execute([
+                ':id' => $id,
+                ':team_id' => $teamId,
+                ':user_id' => $userId,
+                ':type' => $type,
+                ':title' => $title,
+                ':message' => $message,
+                ':data' => $data ? json_encode($data) : null,
+                ':created_at' => $now
+            ]);
+
+            return $result ? $id : false;
+        } catch (Exception $e) {
+            error_log("Ошибка создания уведомления команды: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Создать уведомления для всех участников команды
+     */
+    public function createTeamNotificationForAllMembers($teamId, $excludeUserId, $type, $title, $message, $data = null)
+    {
+        try {
+            // Получаем всех участников команды кроме исключенного пользователя
+            $sql = "SELECT user_id FROM team_members WHERE team_id = :team_id AND user_id != :exclude_user_id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                ':team_id' => $teamId,
+                ':exclude_user_id' => $excludeUserId
+            ]);
+            
+            $members = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $createdCount = 0;
+            
+            foreach ($members as $memberId) {
+                if ($this->createTeamNotification($teamId, $memberId, $type, $title, $message, $data)) {
+                    $createdCount++;
+                }
+            }
+            
+            return $createdCount;
+        } catch (Exception $e) {
+            error_log("Ошибка создания уведомлений для всех участников: " . $e->getMessage());
+            return 0;
+        }
     }
 }

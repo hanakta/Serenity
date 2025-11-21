@@ -205,15 +205,16 @@ class TeamChatMessage
         try {
             $sql = "SELECT COUNT(*) as unread_count
                     FROM {$this->table} m
-                    LEFT JOIN team_chat_read_status r ON m.id = r.message_id AND r.user_id = :user_id
+                    LEFT JOIN team_chat_read_status r ON m.id = r.message_id AND r.user_id = :user_id1
                     WHERE m.team_id = :team_id 
-                    AND m.user_id != :user_id
+                    AND m.user_id != :user_id2
                     AND r.read_at IS NULL";
             
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
                 ':team_id' => $teamId,
-                ':user_id' => $userId
+                ':user_id1' => $userId,
+                ':user_id2' => $userId
             ]);
             
             $result = $stmt->fetch(PDO::FETCH_ASSOC);

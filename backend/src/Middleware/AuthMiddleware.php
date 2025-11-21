@@ -53,6 +53,8 @@ class AuthMiddleware
             
         } catch (\Exception $e) {
             error_log("Auth middleware error: " . $e->getMessage());
+            error_log("Token: " . $token);
+            error_log("Stack trace: " . $e->getTraceAsString());
             return $this->responseService->error('Ошибка аутентификации', 401);
         }
     }

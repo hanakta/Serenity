@@ -163,13 +163,13 @@ export function useTasks(): UseTasksResult {
     setLoading(true)
     setError(null)
     try {
-      console.log('Making POST request to:', `${API_BASE_URL}/api/tasks`)
+      console.log('Making POST request to:', `/api/tasks`)
       console.log('Request headers:', {
         'Authorization': `Bearer ${token.substring(0, 20)}...`,
         'Content-Type': 'application/json',
       })
       console.log('Request body:', JSON.stringify(taskData))
-      
+
       const response = await fetch(`${API_BASE_URL}/api/tasks`, {
         method: 'POST',
         headers: {

@@ -117,13 +117,29 @@ class AuthController
 
             // Генерация JWT токена
             $token = $this->jwtService->generateToken($user['id']);
+            
+            // Генерация refresh токена
+            $refreshToken = $this->jwtService->generateRefreshToken($user['id']);
+
+            // Установка httpOnly cookie для refresh токена (30 дней)
+            $response = $response->withHeader('Set-Cookie', 
+                'refresh_token=' . $refreshToken . 
+                '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=' . (30 * 24 * 60 * 60)
+            );
+            
+            // Установка cookie для запоминания пользователя (7 дней)
+            $response = $response->withHeader('Set-Cookie', 
+                'remember_user=' . $user['id'] . 
+                '; Path=/; Secure; SameSite=Strict; Max-Age=' . (7 * 24 * 60 * 60)
+            );
 
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Успешный вход в систему',
                 'data' => [
                     'user' => $user,
-                    'token' => $token
+                    'token' => $token,
+                    'expires_in' => 86400 // 24 часа
                 ]
             ]);
 
@@ -135,18 +151,6 @@ class AuthController
         }
     }
 
-    /**
-     * Выход пользователя
-     */
-    public function logout($request, $response)
-    {
-        // В реальном приложении здесь можно добавить логику
-        // для добавления токена в черный список
-        return $this->jsonResponse($response, [
-            'success' => true,
-            'message' => 'Успешный выход из системы'
-        ]);
-    }
 
     /**
      * Обновление токена
@@ -212,6 +216,82 @@ class AuthController
                 'message' => 'Ошибка при получении данных пользователя: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Обновление токена через refresh token
+     */
+    public function refreshToken($request, $response)
+    {
+        try {
+            // Получаем refresh token из cookie
+            $cookies = $request->getCookieParams();
+            $refreshToken = $cookies['refresh_token'] ?? null;
+            
+            if (!$refreshToken) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Refresh token не найден'
+                ], 401);
+            }
+
+            // Валидируем refresh token
+            $payload = $this->jwtService->validateToken($refreshToken);
+            
+            if (!$payload || $payload['type'] !== 'refresh') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Недействительный refresh token'
+                ], 401);
+            }
+
+            // Генерируем новый access token
+            $newToken = $this->jwtService->generateToken($payload['user_id']);
+            
+            // Генерируем новый refresh token
+            $newRefreshToken = $this->jwtService->generateRefreshToken($payload['user_id']);
+
+            // Обновляем refresh token в cookie
+            $response = $response->withHeader('Set-Cookie', 
+                'refresh_token=' . $newRefreshToken . 
+                '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=' . (30 * 24 * 60 * 60)
+            );
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Токен обновлен',
+                'data' => [
+                    'token' => $newToken,
+                    'expires_in' => 86400 // 24 часа
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Ошибка обновления токена: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Выход из системы (очистка cookies)
+     */
+    public function logout($request, $response)
+    {
+        // Очищаем cookies
+        $response = $response->withHeader('Set-Cookie', 
+            'refresh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
+        );
+        
+        $response = $response->withHeader('Set-Cookie', 
+            'remember_user=; Path=/; Secure; SameSite=Strict; Max-Age=0'
+        );
+
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'message' => 'Успешный выход из системы'
+        ]);
     }
 
     /**

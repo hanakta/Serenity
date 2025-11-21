@@ -88,7 +88,8 @@ class ValidationService
 
         // Валидация статуса
         if (isset($data['status'])) {
-            $validStatuses = ['todo', 'in_progress', 'completed', 'cancelled'];
+            // Поддерживаем оба варианта начального статуса: 'pending' и 'todo'
+            $validStatuses = ['pending', 'todo', 'in_progress', 'completed', 'cancelled'];
             if (!in_array($data['status'], $validStatuses)) {
                 $errors['status'] = 'Некорректный статус задачи';
             }
@@ -303,7 +304,7 @@ class ValidationService
 
         // Валидация статуса (если передан)
         if (isset($data['status'])) {
-            $validStatuses = ['todo', 'in_progress', 'completed', 'cancelled'];
+            $validStatuses = ['pending', 'todo', 'in_progress', 'completed', 'cancelled'];
             if (!in_array($data['status'], $validStatuses)) {
                 $errors['status'] = 'Некорректный статус задачи';
             }
@@ -535,7 +536,7 @@ class ValidationService
         }
 
         // Валидация статуса
-        $validStatuses = ['todo', 'in_progress', 'completed', 'cancelled'];
+        $validStatuses = ['pending', 'todo', 'in_progress', 'completed', 'cancelled'];
         if (isset($data['status']) && !in_array($data['status'], $validStatuses)) {
             $errors['status'] = 'Некорректный статус задачи';
         }

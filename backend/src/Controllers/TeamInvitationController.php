@@ -8,16 +8,21 @@ use App\Models\User;
 use App\Services\ResponseService;
 use App\Services\ValidationService;
 use App\Services\TeamNotificationService;
+use App\Services\JWTService;
 
 class TeamInvitationController
 {
     private $invitationModel;
     private $responseService;
+    private $database;
+    private $jwtService;
 
     public function __construct($database)
     {
+        $this->database = $database;
         $this->invitationModel = new TeamInvitation($database);
         $this->responseService = new ResponseService();
+        $this->jwtService = new JWTService();
     }
 
     /**
@@ -26,8 +31,12 @@ class TeamInvitationController
     public function sendInvitation($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
+            // Получаем ID пользователя из JWT токена
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
+            
             $teamId = $args['id'];
             $data = $request->getParsedBody();
 
@@ -79,11 +88,26 @@ class TeamInvitationController
     public function getUserInvitations($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
+            // Получаем токен из заголовка
+            $authHeader = $request->getHeaderLine('Authorization');
+            if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+                return $this->responseService->error('Токен не найден', 401);
+            }
+
+            $token = $matches[1];
+            
+            // Валидируем токен и получаем user_id
+            $jwtService = new \App\Services\JWTService();
+            $payload = $jwtService->validateToken($token);
+            if (!$payload) {
+                return $this->responseService->error('Недействительный токен', 401);
+            }
+
+            $userId = $payload['user_id'];
 
             // Получаем email пользователя
-            $user = $this->userModel->findById($userId);
+            $userModel = new \App\Models\User($this->database);
+            $user = $userModel->findById($userId);
             if (!$user) {
                 return $this->responseService->error('Пользователь не найден', 404);
             }
@@ -103,19 +127,27 @@ class TeamInvitationController
     public function acceptInvitation($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
-            $token = $args['token'];
+            // Получаем токен из заголовка
+            $authHeader = $request->getHeaderLine('Authorization');
+            if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+                return $this->responseService->error('Токен не найден', 401);
+            }
 
-            $invitation = $this->invitationModel->accept($token, $userId);
+            $token = $matches[1];
+            
+            // Валидируем токен и получаем user_id
+            $jwtService = new \App\Services\JWTService();
+            $payload = $jwtService->validateToken($token);
+            if (!$payload) {
+                return $this->responseService->error('Недействительный токен', 401);
+            }
+
+            $userId = $payload['user_id'];
+            $invitationToken = $args['token'];
+
+            $invitation = $this->invitationModel->accept($invitationToken, $userId);
 
             if ($invitation) {
-                // Отправляем уведомление команде
-                $this->notificationService->createNotification($invitation['team_id'], $userId, 'member_joined', [
-                    'user_name' => $this->userModel->findById($userId)['name'],
-                    'team_name' => $this->teamModel->findById($invitation['team_id'])['name']
-                ]);
-
                 return $this->responseService->success($invitation, 'Приглашение принято');
             } else {
                 return $this->responseService->error('Приглашение не найдено или просрочено', 404);
@@ -153,8 +185,11 @@ class TeamInvitationController
     public function cancelInvitation($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
+            // Получаем ID пользователя из JWT токена
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
             $invitationId = $args['id'];
 
             // Проверяем, может ли пользователь отменить приглашение
@@ -182,8 +217,11 @@ class TeamInvitationController
     public function deleteInvitation($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
+            // Получаем ID пользователя из JWT токена
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
             $invitationId = $args['id'];
 
             // Проверяем, может ли пользователь удалить приглашение
@@ -222,6 +260,39 @@ class TeamInvitationController
         } catch (\Exception $e) {
             error_log("Ошибка получения информации о приглашении: " . $e->getMessage());
             return $this->responseService->error('Ошибка получения информации о приглашении', 500);
+        }
+    }
+
+    /**
+     * Получить ID текущего пользователя из JWT токена
+     */
+    private function getCurrentUserId($request)
+    {
+        $authHeader = $request->getHeaderLine('Authorization');
+        if (!$authHeader || !preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+            return null;
+        }
+
+        $token = $matches[1];
+        
+        try {
+            $payload = $this->jwtService->validateToken($token);
+            
+            // Дополнительная проверка валидности токена
+            if (!$payload || !isset($payload['user_id']) || empty($payload['user_id'])) {
+                return null;
+            }
+            
+            // Проверяем, что токен не истек
+            if (isset($payload['exp']) && $payload['exp'] < time()) {
+                return null;
+            }
+            
+            return $payload['user_id'];
+        } catch (\Exception $e) {
+            error_log("JWT Validation Error: " . $e->getMessage());
+            error_log("Token: " . $token);
+            return null;
         }
     }
 }

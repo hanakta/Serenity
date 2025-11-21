@@ -33,7 +33,7 @@ class Task
             'id' => uniqid('task_', true),
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
-            'status' => $data['status'] ?? 'todo',
+            'status' => $data['status'] ?? 'pending',
             'priority' => $data['priority'] ?? 'medium',
             'category' => $data['category'] ?? 'personal',
             'due_date' => $dueDate,
@@ -41,6 +41,10 @@ class Task
             'project_id' => $data['project_id'] ?? null,
             'team_id' => $data['team_id'] ?? null
         ];
+
+        // Отладочная информация
+        error_log("Task::create - SQL: " . $sql);
+        error_log("Task::create - Params: " . json_encode($params));
 
         $this->db->execute($sql, $params);
         $taskId = $params['id'];

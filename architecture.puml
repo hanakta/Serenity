@@ -1,0 +1,175 @@
+@startuml Serenity Architecture
+!define AWSPUML https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v18.0/dist
+!include AWSPUML/AWSCommon.puml
+
+title Serenity Project Architecture
+
+' External Actors
+actor "👤 User" as User
+node "🌐 Browser" as Browser
+
+' Frontend Layer
+package "🎨 Frontend (Next.js 15 + TypeScript)" as Frontend {
+    package "📱 React Components" as Components {
+        component [Auth Components\nLogin, Register] as AuthComp
+        component [Task Components\nTaskList, TaskCard] as TaskComp
+        component [Team Components\nTeamCard, Invitations] as TeamComp
+        component [Admin Components\nDashboard, Management] as AdminComp
+        component [UI Components\nButtons, Modals] as UIComp
+    }
+
+    package "🎣 Custom Hooks" as Hooks {
+        component [useAuth\nAuthentication & Tokens] as useAuth
+        component [useTasks\nCRUD Operations] as useTasks
+        component [useInvitations\nTeam Invitations] as useInv
+        component [useTeamChat\nTeam Messaging] as useChat
+        component [usePomodoro\nTimer Sessions] as usePomo
+    }
+
+    package "🛤️ Routing (App Router)" as Routing {
+        component [Public Pages\n/, /pricing, /login] as PublicPages
+        component [Protected Pages\nDashboard, Teams] as ProtectedPages
+        component [Admin Routes\n/admin/*] as AdminRoutes
+    }
+
+    package "🎨 Styling & UI" as Styling {
+        component [Tailwind CSS\nUtility Classes] as Tailwind
+        component [Framer Motion\nAnimations] as Motion
+        component [Lucide Icons\nIcon Library] as Icons
+        component [Dark Theme\nTheme System] as Theme
+    }
+}
+
+' API Communication Layer
+package "🔗 API Communication" as API {
+    component [REST API Calls\nHTTP/HTTPS] as REST
+    component [JWT Authentication\nBearer Tokens] as JWT
+}
+
+' Backend Layer
+package "⚙️ Backend (PHP 8.2 + Slim 4)" as Backend {
+    package "🛡️ Middleware Pipeline" as Middleware {
+        component [CorsMiddleware\nCross-Origin Policy] as CORS
+        component [AuthMiddleware\nJWT Validation] as AuthMW
+        component [AdminMiddleware\nAdmin Access] as AdminMW
+    }
+
+    package "🎯 API Controllers" as Controllers {
+        component [AuthController\nLogin/Register/Logout] as AuthCtrl
+        component [TaskController\nCRUD Tasks] as TaskCtrl
+        component [UserController\nUser Profile] as UserCtrl
+        component [TeamController\nTeam Management] as TeamCtrl
+        component [TeamInvitationController\nInvitations] as InvCtrl
+        component [TeamChatController\nChat System] as ChatCtrl
+        component [AdminController\nAdmin Functions] as AdminCtrl
+    }
+
+    package "📊 Business Services" as Services {
+        component [JWTService\nToken Management] as JWTService
+        component [ResponseService\nJSON Formatting] as RespService
+        component [ValidationService\nData Validation] as ValService
+        component [FileService\nFile Operations] as FileService
+    }
+}
+
+' Database Layer
+package "🗄️ Database Layer" as Database {
+    package "📋 Core Tables" as CoreTables {
+        database "users\n👥 System users" as users
+        database "tasks\n📝 Tasks & todos" as tasks
+        database "teams\n👥 Team entities" as teams
+        database "team_members\n👥 Team membership" as team_members
+        database "projects\n📁 Projects" as projects
+        database "team_invitations\n📧 Invitations" as invitations
+    }
+
+    package "💬 Communication Tables" as CommTables {
+        database "team_chat_messages\n💬 Chat messages" as chat_msgs
+        database "team_activity\n📊 Team activity" as activity
+        database "pomodoro_sessions\n⏱️ Timer sessions" as pomodoro
+    }
+
+    database "🏗️ MySQL/SQLite\nDatabase Engine" as DB_Engine
+}
+
+' Connections
+User --> Browser
+Browser --> AuthComp
+Browser --> TaskComp
+Browser --> TeamComp
+Browser --> AdminComp
+
+AuthComp --> useAuth
+TaskComp --> useTasks
+TeamComp --> useInv
+TeamComp --> useChat
+
+useAuth --> REST
+useTasks --> REST
+useInv --> REST
+useChat --> REST
+usePomo --> REST
+
+REST --> CORS
+REST --> AuthMW
+REST --> AdminMW
+
+CORS --> AuthCtrl
+CORS --> TaskCtrl
+CORS --> UserCtrl
+CORS --> TeamCtrl
+CORS --> InvCtrl
+CORS --> ChatCtrl
+CORS --> AdminCtrl
+
+AuthCtrl --> JWTService
+TaskCtrl --> RespService
+AdminCtrl --> ValService
+
+AuthCtrl --> users
+TaskCtrl --> tasks
+UserCtrl --> users
+TeamCtrl --> teams
+TeamCtrl --> team_members
+InvCtrl --> invitations
+ChatCtrl --> chat_msgs
+AdminCtrl --> projects
+
+tasks --> DB_Engine
+teams --> DB_Engine
+users --> DB_Engine
+team_members --> DB_Engine
+projects --> DB_Engine
+invitations --> DB_Engine
+chat_msgs --> DB_Engine
+activity --> DB_Engine
+pomodoro --> DB_Engine
+
+' Styling
+skinparam backgroundColor #FEFEFE
+skinparam package {
+    BackgroundColor #E1F5FE
+    BorderColor #01579B
+    BorderThickness 2
+}
+
+skinparam component {
+    BackgroundColor #F3E5F5
+    BorderColor #4A148C
+    BorderThickness 1
+}
+
+skinparam database {
+    BackgroundColor #E8F5E8
+    BorderColor #1B5E20
+}
+
+skinparam actor {
+    BackgroundColor #FFF3E0
+    BorderColor #E65100
+}
+@enduml
+
+
+
+

@@ -1,13 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useLayoutEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useTasks } from '@/hooks/useTasks'
 import { useTeams } from '@/hooks/useTeams'
 import { Task, TaskFilters as TaskFiltersType } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Filter, BarChart3, Calendar, AlertTriangle, Bell, Settings, User, Shield, Users, MessageSquare, Home, TrendingUp, Zap, Star, Heart, Sparkles, Target, Award, Rocket } from 'lucide-react'
+import { Plus, Search, Filter, BarChart3, Calendar, AlertTriangle, Bell, Settings, User, Shield, Users, MessageSquare, Home, TrendingUp, Zap, Star, Heart, Sparkles, Target, Award, Rocket, CheckSquare, ChevronUp, ChevronDown } from 'lucide-react'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import GradualBlur from '@/components/GradualBlur'
 
 // Components
 // import AnimatedBackground from '@/components/AnimatedBackground'
@@ -25,12 +29,13 @@ import DataSettingsModal from '@/components/DataSettingsModal'
 import AboutModal from '@/components/AboutModal'
 import StatsCard from '@/components/StatsCard'
 import TaskFilters from '@/components/TaskFilters'
-import TaskStats from '@/components/TaskStats'
 import CalendarView from '@/components/CalendarView'
 import NotificationsView from '@/components/NotificationsView'
 import TeamsSection from '@/components/TeamsSection'
 import PublicTeamsSection from '@/components/PublicTeamsSection'
 import UserStateDebugger from '@/components/UserStateDebugger'
+import SearchAndFilters from '@/components/SearchAndFilters'
+import Onboarding from '@/components/Onboarding'
 
 export default function HomePage() {
   const { user, isLoading, logout } = useAuth()
@@ -38,6 +43,16 @@ export default function HomePage() {
   const [isClient, setIsClient] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const gsapRootRef = useRef<HTMLDivElement | null>(null)
+
+  // Проверка роли пользователя и перенаправление
+  useEffect(() => {
+    if (!isLoading && user) {
+      // Убираем автоматическое перенаправление админов на админ-панель
+      // Теперь они могут выбирать, куда идти
+      console.log('User logged in:', user.role)
+    }
+  }, [user, isLoading, router])
   
   const {
     tasks,
@@ -61,11 +76,25 @@ export default function HomePage() {
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [filters, setFilters] = useState<TaskFiltersType>({})
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortOption, setSortOption] = useState({ field: 'created_at', direction: 'desc' as 'asc' | 'desc' })
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false)
 
-  // Перенаправление на страницу коллаборации
+  // Перенаправление на страницы только для внешних страниц
   useEffect(() => {
-    if (currentView === 'collaboration' && typeof window !== 'undefined') {
-      router.replace('/collaboration')
+    if (typeof window !== 'undefined') {
+      // Перенаправляем только на внешние страницы, не на вкладки дашборда
+      if (currentView === 'collaboration') {
+        router.replace('/collaboration')
+      } else if (currentView === 'focus') {
+        router.replace('/focus')
+      } else if (currentView === 'analytics') {
+        router.replace('/analytics')
+      }
+      // Для вкладок дашборда (dashboard, tasks, teams, etc.) не делаем перенаправление
+      // Они должны отображаться на той же странице
     }
   }, [currentView, router])
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([])
@@ -89,6 +118,13 @@ export default function HomePage() {
     
     checkMobile()
     window.addEventListener('resize', checkMobile)
+    
+    // Обработка параметра view из URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const viewParam = urlParams.get('view')
+    if (viewParam && ['dashboard', 'tasks', 'teams', 'public-teams', 'analytics', 'settings'].includes(viewParam)) {
+      setCurrentView(viewParam)
+    }
     
     // Загружаем сохраненную тему
     const loadTheme = () => {
@@ -134,11 +170,47 @@ export default function HomePage() {
     }
   }, [isClient, user, isLoading, router])
 
+  // GSAP демо-анимации для главной (dashboard)
+  useLayoutEffect(() => {
+    if (!isClient || isLoading || !user) return
+    if (currentView !== 'dashboard') return
+
+    gsap.registerPlugin(ScrollTrigger)
+    const ctx = gsap.context(() => {
+      gsap.from('.hero-title', {
+        y: 30,
+        opacity: 0,
+        duration: 0.8,
+        ease: 'power3.out',
+      })
+
+      gsap.from('.stat-card', {
+        y: 40,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.15,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: '.stat-grid',
+          start: 'top 85%'
+        }
+      })
+    }, gsapRootRef)
+
+    return () => ctx.revert()
+  }, [isClient, isLoading, user, currentView])
+
   useEffect(() => {
     if (user) {
       fetchTasks(filters)
       fetchStats()
       loadOverdueAndTodayTasks()
+      
+      // Проверяем, нужно ли показать onboarding
+      const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding')
+      if (!hasSeenOnboarding) {
+        setShowOnboarding(true)
+      }
     }
   }, [user, filters, fetchTasks, fetchStats])
 
@@ -180,6 +252,30 @@ export default function HomePage() {
 
   const handleMobileMenuToggle = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen)
+  }
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    // Здесь можно добавить логику фильтрации задач
+  }
+
+  const handleFilterChange = (newFilters: any) => {
+    setFilters(newFilters)
+    fetchTasks(newFilters)
+  }
+
+  const handleSortChange = (sort: { field: string; direction: 'asc' | 'desc' }) => {
+    setSortOption(sort)
+    // Здесь можно добавить логику сортировки задач
+  }
+
+  const handleViewChange = (view: 'grid' | 'list') => {
+    setViewMode(view)
+  }
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem('hasSeenOnboarding', 'true')
+    setShowOnboarding(false)
   }
 
   const handleEditTask = async (taskData: Partial<Task>) => {
@@ -618,12 +714,12 @@ export default function HomePage() {
     switch (currentView) {
       case 'tasks':
         return (
-          <div className="space-y-8">
+          <div ref={gsapRootRef} className="space-y-8">
             {/* Header Section */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl p-8 backdrop-blur-xl border border-slate-700/50 shadow-glow"
+              className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl p-8 backdrop-blur-sm border border-slate-700/50 shadow-glow"
             >
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                 <div>
@@ -641,30 +737,47 @@ export default function HomePage() {
                       {tasks.filter(t => t.status === 'completed').length} выполнено
                     </div>
                   </div>
-                  <motion.button
-                    onClick={() => setShowTaskModal(true)}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center space-x-2"
-                  >
-                    <Plus className="w-5 h-5" />
-                    <span>Создать задачу</span>
-                  </motion.button>
+                  <div className="flex items-center space-x-3">
+                    <motion.button
+                      onClick={() => setShowTaskModal(true)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center space-x-2"
+                    >
+                      <Plus className="w-5 h-5" />
+                      <span>Создать задачу</span>
+                    </motion.button>
+                    {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                      <Link href="/admin">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-6 py-3 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center space-x-2"
+                        >
+                          <Shield className="w-5 h-5" />
+                          <span>Админ-панель</span>
+                        </motion.button>
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
             </motion.div>
 
-            {/* Filters Section */}
+            {/* Search and Filters Section */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
             >
-            <TaskFilters
-              filters={filters}
-              onFiltersChange={handleFiltersChange}
-              onClearFilters={handleClearFilters}
-            />
+              <SearchAndFilters
+                onSearch={handleSearch}
+                onFilterChange={handleFilterChange}
+                onSortChange={handleSortChange}
+                onViewChange={handleViewChange}
+                currentView={viewMode}
+                placeholder="Поиск задач..."
+              />
             </motion.div>
 
             {/* Error State */}
@@ -773,8 +886,13 @@ export default function HomePage() {
         // Перенаправление обрабатывается в useEffect
         return null
 
+      case 'focus':
+        // Перенаправление обрабатывается в useEffect
+        return null
+
       case 'analytics':
-        return <TaskStats stats={stats} loading={tasksLoading} />
+        // Перенаправление обрабатывается в useEffect
+        return null
 
       case 'calendar':
         return <CalendarView onCreateTask={() => setShowTaskModal(true)} />
@@ -806,7 +924,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl group-hover:from-blue-500/30 group-hover:to-cyan-500/30 transition-all duration-300">
@@ -835,7 +953,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-2xl group-hover:from-green-500/30 group-hover:to-emerald-500/30 transition-all duration-300">
@@ -864,7 +982,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all duration-300">
@@ -893,7 +1011,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-orange-500/20 to-yellow-500/20 rounded-2xl group-hover:from-orange-500/30 group-hover:to-yellow-500/30 transition-all duration-300">
@@ -922,7 +1040,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-2xl group-hover:from-cyan-500/30 group-hover:to-blue-500/30 transition-all duration-300">
@@ -951,7 +1069,7 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
-                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl shadow-gradient hover:shadow-glow transition-all duration-300 group"
+                className="p-6 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm shadow-gradient hover:shadow-glow transition-all duration-300 group"
               >
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-pink-500/20 to-rose-500/20 rounded-2xl group-hover:from-pink-500/30 group-hover:to-rose-500/30 transition-all duration-300">
@@ -981,123 +1099,23 @@ export default function HomePage() {
       default:
         return (
           <div className="space-y-8">
-            {/* Welcome Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center py-20 relative overflow-hidden"
-            >
-              {/* Enhanced Animated Background Elements */}
-              <div className="absolute inset-0 -z-10">
-                {/* Floating orbs */}
-                <motion.div
-                  animate={{
-                    x: [0, 100, 0],
-                    y: [0, -50, 0],
-                    scale: [1, 1.2, 1],
-                  }}
-                  transition={{
-                    duration: 8,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                  }}
-                  className="absolute top-10 left-10 w-32 h-32 bg-gradient-to-r from-blue-500/30 to-purple-500/30 rounded-full blur-2xl"
-                />
-                <motion.div
-                  animate={{
-                    x: [0, -80, 0],
-                    y: [0, 60, 0],
-                    scale: [1, 1.3, 1],
-                  }}
-                  transition={{
-                    duration: 10,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 1
-                  }}
-                  className="absolute top-20 right-20 w-40 h-40 bg-gradient-to-r from-purple-500/30 to-pink-500/30 rounded-full blur-2xl"
-                />
-                <motion.div
-                  animate={{
-                    x: [0, 60, 0],
-                    y: [0, -40, 0],
-                    scale: [1, 1.1, 1],
-                  }}
-                  transition={{
-                    duration: 12,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 2
-                  }}
-                  className="absolute bottom-10 left-1/3 w-36 h-36 bg-gradient-to-r from-cyan-500/30 to-blue-500/30 rounded-full blur-2xl"
-                />
-                
-                {/* Grid pattern */}
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-              </div>
-              
-              <div className="relative z-10">
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.2, duration: 0.6, ease: "easeOut" }}
-                  className="inline-flex items-center space-x-3 px-6 py-3 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 border border-blue-500/30 rounded-full mb-8 backdrop-blur-sm"
-                >
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                >
-                  <Sparkles className="w-5 h-5 text-blue-400" />
-                  </motion.div>
-                  <span className="text-blue-300 font-medium text-sm">Премиум версия</span>
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                </motion.div>
-                
-                <motion.h1 
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.8 }}
-                  className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent mb-8 leading-tight"
-                >
-                  Добро пожаловать в
-                  <br />
-                  <motion.span 
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.5, duration: 0.6 }}
-                    className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent relative"
-                  >
-                    Serenity
-                    <motion.div
-                      className="absolute -inset-2 bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-pink-400/20 blur-xl rounded-lg"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.8, duration: 0.5 }}
-                    />
-                  </motion.span>
-                </motion.h1>
-                
-                
-                
-              </div>
-            </motion.div>
 
             {/* Enhanced Stats Cards */}
             <motion.div 
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.2, duration: 0.8 }}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
+              className="stat-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
             >
               <motion.div
                 initial={{ opacity: 0, y: 30, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ delay: 1.3, duration: 0.6, ease: "easeOut" }}
-                whileHover={{ scale: 1.05, y: -10 }}
-                className="group relative"
+                whileHover={{ scale: 1.02 }}
+                className="stat-card group relative"
               >
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-3xl blur opacity-30 group-hover:opacity-50 transition duration-300"></div>
-                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-blue-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-4 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl group-hover:from-blue-500/30 group-hover:to-cyan-500/30 transition-all duration-300">
                       <BarChart3 className="w-8 h-8 text-blue-400" />
@@ -1128,11 +1146,11 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 30, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ delay: 1.4, duration: 0.6, ease: "easeOut" }}
-                whileHover={{ scale: 1.05, y: -10 }}
-                className="group relative"
+                whileHover={{ scale: 1.02 }}
+                className="stat-card group relative"
               >
-                <div className="absolute -inset-1 bg-gradient-to-r from-green-600 to-emerald-600 rounded-3xl blur opacity-30 group-hover:opacity-50 transition duration-300"></div>
-                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-green-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                <div className="absolute -inset-1 bg-gradient-to-r from-green-600 to-emerald-600 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-green-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-4 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-2xl group-hover:from-green-500/30 group-hover:to-emerald-500/30 transition-all duration-300">
                       <Calendar className="w-8 h-8 text-green-400" />
@@ -1163,11 +1181,11 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 30, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ delay: 1.5, duration: 0.6, ease: "easeOut" }}
-                whileHover={{ scale: 1.05, y: -10 }}
-                className="group relative"
+                whileHover={{ scale: 1.02 }}
+                className="stat-card group relative"
               >
-                <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-yellow-600 rounded-3xl blur opacity-30 group-hover:opacity-50 transition duration-300"></div>
-                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-orange-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-yellow-600 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-orange-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-4 bg-gradient-to-br from-orange-500/20 to-yellow-500/20 rounded-2xl group-hover:from-orange-500/30 group-hover:to-yellow-500/30 transition-all duration-300">
                       <Filter className="w-8 h-8 text-orange-400" />
@@ -1198,11 +1216,11 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 30, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ delay: 1.6, duration: 0.6, ease: "easeOut" }}
-                whileHover={{ scale: 1.05, y: -10 }}
-                className="group relative"
+                whileHover={{ scale: 1.02 }}
+                className="stat-card group relative"
               >
-                <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-pink-600 rounded-3xl blur opacity-30 group-hover:opacity-50 transition duration-300"></div>
-                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-red-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
+                <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-pink-600 rounded-3xl opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                <div className="relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-red-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-4 bg-gradient-to-br from-red-500/20 to-pink-500/20 rounded-2xl group-hover:from-red-500/30 group-hover:to-pink-500/30 transition-all duration-300">
                       <AlertTriangle className="w-8 h-8 text-red-400" />
@@ -1241,15 +1259,15 @@ export default function HomePage() {
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 2.3, duration: 0.6 }}
-                whileHover={{ scale: 1.05, y: -10 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setCurrentView('tasks')}
-                className="group relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-blue-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                className="group relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-blue-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <div className="relative z-10 flex items-center space-x-6">
                   <motion.div 
-                    whileHover={{ rotate: 15, scale: 1.1 }}
+                    whileHover={{ scale: 1.05 }}
                     className="p-5 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-3xl group-hover:from-blue-500/30 group-hover:to-cyan-500/30 transition-all duration-300 shadow-lg"
                   >
                     <BarChart3 className="w-10 h-10 text-blue-400" />
@@ -1275,15 +1293,15 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 2.4, duration: 0.6 }}
-                whileHover={{ scale: 1.05, y: -10 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setCurrentView('analytics')}
-                className="group relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-xl hover:border-purple-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                className="group relative p-8 bg-gradient-to-br from-slate-800/90 to-slate-900/90 rounded-3xl border border-slate-700/50 backdrop-blur-sm hover:border-purple-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 to-pink-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <div className="relative z-10 flex items-center space-x-6">
                   <motion.div 
-                    whileHover={{ rotate: -15, scale: 1.1 }}
+                    whileHover={{ scale: 1.05 }}
                     className="p-5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-3xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all duration-300 shadow-lg"
                   >
                     <BarChart3 className="w-10 h-10 text-purple-400" />
@@ -1309,15 +1327,15 @@ export default function HomePage() {
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 2.5, duration: 0.6 }}
-                whileHover={{ scale: 1.05, y: -10 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowTaskModal(true)}
-                className="group relative p-8 bg-gradient-to-br from-blue-600/30 to-purple-600/30 rounded-3xl border border-blue-500/30 backdrop-blur-xl hover:border-blue-400/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                className="group relative p-8 bg-gradient-to-br from-blue-600/30 to-purple-600/30 rounded-3xl border border-blue-500/30 backdrop-blur-sm hover:border-blue-400/50 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <div className="relative z-10 flex items-center space-x-6">
                   <motion.div 
-                    whileHover={{ rotate: 15, scale: 1.2 }}
+                    whileHover={{ scale: 1.05 }}
                     className="p-5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl group-hover:scale-110 transition-all duration-300 shadow-lg"
                   >
                     <Plus className="w-10 h-10 text-white" />
@@ -1347,7 +1365,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen">
       {/* <AnimatedBackground /> */}
       
       {/* Mobile Navigation */}
@@ -1357,6 +1375,8 @@ export default function HomePage() {
         onCreateTask={() => setShowTaskModal(true)}
         isOpen={isMobileMenuOpen}
         onToggle={handleMobileMenuToggle}
+        user={user}
+        onLogout={logout}
       />
       
       {/* Desktop Sidebar */}
@@ -1382,16 +1402,27 @@ export default function HomePage() {
         }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 py-4 md:py-6 px-4 md:px-8">
+        <motion.header 
+          className="sticky top-0 z-40 bg-slate-900/40 backdrop-blur-sm py-4 md:py-6 px-4 md:px-8"
+          animate={{ 
+            y: isHeaderHidden ? -100 : 0,
+            opacity: isHeaderHidden ? 0 : 1
+          }}
+          transition={{ 
+            duration: 0.3, 
+            ease: "easeInOut" 
+          }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <h2 className="text-xl md:text-2xl font-bold text-white capitalize truncate">
                 {currentView === 'dashboard' && 'Дашборд'}
                 {currentView === 'tasks' && 'Задачи'}
+                {currentView === 'focus' && 'Фокус'}
                 {currentView === 'teams' && 'Мои команды'}
                 {currentView === 'public-teams' && 'Публичные команды'}
                 {currentView === 'collaboration' && 'Команды'}
-                {currentView === 'analytics' && 'Аналитика'}
+                {currentView === 'analytics' && 'Аналитика и статистика'}
                 {currentView === 'calendar' && 'Календарь'}
                 {currentView === 'notifications' && 'Уведомления'}
                 {currentView === 'settings' && 'Настройки'}
@@ -1399,10 +1430,11 @@ export default function HomePage() {
               <p className="text-slate-400 text-xs md:text-sm hidden md:block">
                 {currentView === 'dashboard' && 'Обзор вашей продуктивности'}
                 {currentView === 'tasks' && 'Управление задачами'}
+                {currentView === 'focus' && 'Pomodoro таймер для концентрации'}
                 {currentView === 'teams' && 'Управление командами и участниками'}
                 {currentView === 'public-teams' && 'Найдите и присоединяйтесь к командам других пользователей'}
                 {currentView === 'collaboration' && 'Управление командами и проектами'}
-                {currentView === 'analytics' && 'Статистика и отчеты по продуктивности'}
+                {currentView === 'analytics' && 'Отчеты, метрики и статистика продуктивности'}
                 {currentView === 'calendar' && 'Планирование времени'}
                 {currentView === 'notifications' && 'Уведомления и напоминания'}
                 {currentView === 'settings' && 'Настройки аккаунта'}
@@ -1410,6 +1442,21 @@ export default function HomePage() {
             </div>
             
             <div className="flex items-center space-x-2 md:space-x-6 flex-shrink-0">
+              {/* Кнопка скрытия header */}
+              <motion.button
+                onClick={() => setIsHeaderHidden(!isHeaderHidden)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="p-3 bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 hover:text-white rounded-xl transition-all duration-300 border border-slate-600/50 hover:border-slate-500/50"
+                title={isHeaderHidden ? "Показать панель" : "Скрыть панель"}
+              >
+                {isHeaderHidden ? (
+                  <ChevronDown className="w-5 h-5" />
+                ) : (
+                  <ChevronUp className="w-5 h-5" />
+                )}
+              </motion.button>
+
               {/* Кнопка тарифов */}
               <motion.button
                 onClick={() => router.push('/pricing')}
@@ -1438,7 +1485,7 @@ export default function HomePage() {
               />
             </div>
           </div>
-        </header>
+        </motion.header>
 
         {/* Content */}
         <main className="p-4 md:p-8">
@@ -1508,6 +1555,27 @@ export default function HomePage() {
 
       {/* User State Debugger - только в development */}
       <UserStateDebugger />
+
+      {/* Onboarding Modal */}
+      <Onboarding
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onComplete={handleOnboardingComplete}
+      />
+
+      {/* Floating button to show header when hidden */}
+      {isHeaderHidden && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0 }}
+          onClick={() => setIsHeaderHidden(false)}
+          className="fixed top-4 right-4 z-50 p-3 bg-slate-800/80 hover:bg-slate-700/80 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 border border-slate-600/50 hover:border-slate-500/50 backdrop-blur-sm"
+          title="Показать панель"
+        >
+          <ChevronUp className="w-5 h-5" />
+        </motion.button>
+      )}
     </div>
   )
 }

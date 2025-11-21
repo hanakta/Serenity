@@ -578,7 +578,7 @@ class TeamController
                 'due_date' => $data['due_date'] ?? null,
                 'team_id' => $teamId,
                 'user_id' => $userId,
-                'status' => 'todo'
+                'status' => 'pending'
             ];
             
             $task = $taskModel->create($taskData);
@@ -600,8 +600,11 @@ class TeamController
     public function getProjects($request, $response, $args)
     {
         try {
-            // Временно используем фиксированный user_id для тестирования
-            $userId = 'user_68c6db922ef080.86987837';
+            // Получаем ID пользователя из JWT токена
+            $userId = $this->getCurrentUserId($request);
+            if (!$userId) {
+                return $this->responseService->error('Неавторизованный доступ', 401);
+            }
             $teamId = $args['id'];
 
             $queryParams = $request->getQueryParams();
@@ -753,7 +756,6 @@ class TeamController
             
             // Дополнительная проверка валидности токена
             if (!$payload || !isset($payload['user_id']) || empty($payload['user_id'])) {
-                error_log("Invalid token payload: " . json_encode($payload));
                 return null;
             }
             

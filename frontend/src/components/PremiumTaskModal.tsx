@@ -69,7 +69,7 @@ export default function PremiumTaskModal({
       status,
       priority,
       category,
-      due_date: dueDate ? new Date(dueDate).toISOString() : null,
+      due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
     }
 
     console.log('Sending task data:', taskData)

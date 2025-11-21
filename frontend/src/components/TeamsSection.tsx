@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Users, Settings, Crown, UserPlus, MessageSquare, Calendar, BarChart3, Trash2, Edit, CheckSquare, FolderPlus, RefreshCw } from 'lucide-react';
+import { Plus, Users, Settings, Crown, Calendar, BarChart3, Trash2, Edit, CheckSquare, FolderPlus, RefreshCw, LogOut, UserPlus } from 'lucide-react';
 import { useTeams, Team } from '@/hooks/useTeams';
 import { useTeamTasks } from '@/hooks/useTeamTasks';
 import CreateTeamModal from './CreateTeamModal';
@@ -15,7 +15,7 @@ interface TeamsSectionProps {
 }
 
 const TeamsSection: React.FC<TeamsSectionProps> = ({ className = '' }) => {
-  const { teams, loading, error, createTeam, deleteTeam, joinTeam, syncWithAPI } = useTeams();
+  const { teams, loading, error, createTeam, deleteTeam, joinTeam, leaveTeam, syncWithAPI } = useTeams();
   const { createTeamTask, getTeamProjects, teamProjects } = useTeamTasks();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -41,6 +41,16 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ className = '' }) => {
         await deleteTeam(teamId);
       } catch (err) {
         console.error('Ошибка удаления команды:', err);
+      }
+    }
+  };
+
+  const handleLeaveTeam = async (teamId: string, teamName: string) => {
+    if (confirm(`Вы уверены, что хотите покинуть команду "${teamName}"?`)) {
+      try {
+        await leaveTeam(teamId);
+      } catch (err) {
+        console.error('Ошибка выхода из команды:', err);
       }
     }
   };
@@ -271,26 +281,17 @@ const TeamsSection: React.FC<TeamsSectionProps> = ({ className = '' }) => {
                           <span className="font-medium">Настройки</span>
                         </motion.button>
                       </>
-                    ) : (
+                    ) : team.isMember && (
                       <motion.button 
-                        onClick={() => handleJoinTeam(team.id)}
-                        className="flex items-center space-x-1.5 px-3 py-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-all duration-200 border border-blue-500/30 hover:border-blue-500/50 text-sm"
+                        onClick={() => handleLeaveTeam(team.id, team.name)}
+                        className="flex items-center space-x-1.5 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all duration-200 border border-red-500/30 hover:border-red-500/50 text-sm"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                       >
-                        <UserPlus className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="font-medium">Присоединиться</span>
+                        <LogOut className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="font-medium">Выйти из команды</span>
                       </motion.button>
                     )}
-                    
-                    <motion.button 
-                      className="flex items-center space-x-1.5 px-3 py-2 bg-slate-600/20 text-slate-400 rounded-lg hover:bg-slate-600/30 transition-all duration-200 border border-slate-600/30 hover:border-slate-500/50 text-sm"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="font-medium">Чат</span>
-                    </motion.button>
                   </div>
                 </div>
               </div>

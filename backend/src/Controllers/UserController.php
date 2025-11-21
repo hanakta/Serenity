@@ -285,4 +285,72 @@ class UserController
             return $this->responseService->error('Ошибка получения аватара: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Получить аватарку пользователя по ID (публичный endpoint)
+     */
+    public function getUserAvatar($request, $response, $args)
+    {
+        try {
+            $userId = $args['id'];
+            
+            // Получаем аватарку из базы данных
+            $avatarData = $this->userModel->getAvatar($userId);
+            if (!$avatarData || !$avatarData['avatar_data']) {
+                // Возвращаем SVG с инициалами пользователя
+                $user = $this->userModel->findById($userId);
+                if (!$user) {
+                    return $this->responseService->error('Пользователь не найден', 404);
+                }
+                
+                $initials = strtoupper(substr($user['name'] ?? 'U', 0, 2));
+                $svg = $this->generateAvatarSVG($initials);
+                
+                $response = $response->withHeader('Content-Type', 'image/svg+xml');
+                $response = $response->withHeader('Cache-Control', 'public, max-age=3600');
+                $response->getBody()->write($svg);
+                return $response;
+            }
+
+            // Декодируем base64 данные
+            $imageData = base64_decode($avatarData['avatar_data']);
+            if ($imageData === false) {
+                return $this->responseService->error('Ошибка декодирования аватара', 500);
+            }
+
+            // Устанавливаем заголовки для изображения
+            $response = $response->withHeader('Content-Type', $avatarData['avatar_mime_type']);
+            $response = $response->withHeader('Content-Length', (string)$avatarData['avatar_size']);
+            $response = $response->withHeader('Cache-Control', 'public, max-age=3600'); // Кэшируем на час
+
+            // Возвращаем изображение
+            $response->getBody()->write($imageData);
+            return $response;
+        } catch (\Exception $e) {
+            return $this->responseService->error('Ошибка получения аватара: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Генерировать SVG аватар с инициалами
+     */
+    private function generateAvatarSVG($initials, $size = 100)
+    {
+        // Генерируем цвет на основе инициалов
+        $colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+            '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+        ];
+        $colorIndex = crc32($initials) % count($colors);
+        $backgroundColor = $colors[$colorIndex];
+        
+        $svg = '<?xml version="1.0" encoding="UTF-8"?>
+        <svg width="' . $size . '" height="' . $size . '" xmlns="http://www.w3.org/2000/svg">
+            <rect width="' . $size . '" height="' . $size . '" fill="' . $backgroundColor . '" rx="' . ($size / 8) . '"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="' . ($size * 0.4) . '" 
+                  font-weight="bold" fill="white" text-anchor="middle" dy=".35em">' . htmlspecialchars($initials) . '</text>
+        </svg>';
+        
+        return $svg;
+    }
 }
